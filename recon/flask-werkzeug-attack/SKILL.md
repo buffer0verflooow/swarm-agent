@@ -1,6 +1,6 @@
 ---
 name: flask-werkzeug-attack
-description: "Exploit Flask/Werkzeug debugger exposure — traceback disclosure, SECRET extraction, console RCE (if enabled), server path disclosure, and Python stack trace information gathering"
+description: Exploit Flask/Werkzeug debugger exposure for traceback and SECRET leaks.
 sources: field_recon, patientportal_com_deep_probe_june_2026
 report_count: 1
 category: recon

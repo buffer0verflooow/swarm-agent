@@ -1,6 +1,6 @@
 ---
 name: unauth-api-flow-hijack
-description: Exploit unauthenticated multi-step API flows — start, submit, upload, export without credentials.
+description: Exploit unauthenticated multi-step API flows without credentials.
 version: 1.0.0
 author: uphiago
 license: MIT

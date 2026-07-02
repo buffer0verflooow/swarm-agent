@@ -1,8 +1,9 @@
 ---
 name: recon-carpet-cleaning
-description: "Sector-specific recon for carpet cleaning company websites — steam cleaning, stain removal, upholstery cleaning, flood restoration. Typically WordPress on shared hosting with service booking forms, emergency water damage response, and seasonal special offers. Built from mass recon patterns across SMB service sectors where low-budget agency-built sites share identical vulnerability profiles."
+description: Sector-specific recon for carpet cleaning and water damage restoration company websites.
 sources: field_recon, sector_mass_recon
 report_count: 5
+category: redteam
 ---
 
 # RECON-CARPET-CLEANING — Sector-Specific Recon for Carpet Cleaning Sites

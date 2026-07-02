@@ -1,6 +1,6 @@
 ---
 name: scada-hikvision-isapi
-description: Enumerate and fingerprint Hikvision ISAPI endpoints on SCADA/IoT web interfaces.
+description: Enumerate Hikvision ISAPI endpoints on SCADA and IoT web interfaces.
 version: 1.0.0
 author: uphiago
 license: MIT

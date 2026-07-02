@@ -1,6 +1,6 @@
 ---
 name: tls-fingerprint-impersonation
-description: Spoof TLS ClientHello and JA3/JA4 fingerprints for HTTP-level browser impersonation.
+description: Spoof TLS ClientHello and JA4 fingerprints for browser impersonation.
 version: 1.0.0
 author: uphiago
 license: MIT

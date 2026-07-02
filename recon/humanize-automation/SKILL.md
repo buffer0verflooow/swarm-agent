@@ -1,6 +1,6 @@
 ---
 name: humanize-automation
-description: Human-like mouse, keyboard, and scroll behavior for bypassing behavioral bot detection.
+description: Human-like mouse, keyboard and scroll behavior for behavioral bot bypass.
 version: 1.0.0
 author: uphiago
 license: MIT

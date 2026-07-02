@@ -1,6 +1,6 @@
 ---
 name: hardcoded-credential-hunt
-description: Detect hardcoded passwords in HTML forms, JavaScript, comments, and API responses.
+description: Detect hardcoded passwords in HTML forms, JavaScript, and API responses.
 version: 1.0.0
 author: uphiago
 license: MIT

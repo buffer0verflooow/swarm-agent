@@ -1,6 +1,6 @@
 ---
 name: stealth-browser-launch
-description: Launch stealth Chromium with source-level fingerprint patches for anti-bot bypass.
+description: Launch stealth Chromium with C++ fingerprint patches for anti-bot bypass.
 version: 1.0.0
 author: uphiago
 license: MIT

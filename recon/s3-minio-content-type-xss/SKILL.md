@@ -1,6 +1,6 @@
 ---
 name: s3-minio-content-type-xss
-description: Exploit public bucket objects via Content-Type override to achieve stored XSS.
+description: Exploit public bucket Content-Type override for stored XSS on target origin.
 version: 1.0.0
 author: uphiago
 license: MIT

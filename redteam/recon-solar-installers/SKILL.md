@@ -1,7 +1,8 @@
 ---
 name: recon-solar-installers
-description: "Sector-specific recon for solar panel installation company websites — residential solar, commercial solar, battery storage, energy audits. Typically WordPress with financing calculators, energy savings estimators, and customer referral portals. These sites are rich targets: financing forms collect SSN/income data, referral programs have IDOR-prone user IDs, and embedded energy APIs leak API keys in client-side JavaScript."
+description: Sector-specific recon for solar panel installer and renewable energy company websites.
 sources: field_recon, sector_mass_recon
+category: redteam
 report_count: 3
 ---
 

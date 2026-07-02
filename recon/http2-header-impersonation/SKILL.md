@@ -1,6 +1,6 @@
 ---
 name: http2-header-impersonation
-description: Spoof HTTP/2 SETTINGS frames, pseudo-header order, and browser-specific headers for fingerprint evasion.
+description: Spoof HTTP/2 SETTINGS frames and pseudo-header order per browser profile.
 version: 1.0.0
 author: uphiago
 license: MIT
