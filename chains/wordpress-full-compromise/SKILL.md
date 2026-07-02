@@ -8,18 +8,17 @@ platforms: [linux]
 compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
 disable-model-invocation: true
 metadata:
-  hermes:
-    tags: [chains, wordpress, RCE, ATO, full-compromise]
-    category: chains
-    related_skills:
-      - cross-attack-chains
-      - cors-credential-wordpress
-      - xmlrpc-exploitation
-      - phpinfo-to-rce
-      - wordpress-plugin-hunt
-      - wp-mass-recon
-      - source-leak-hunt
-      - deep-invade
+  tags: [chains, wordpress, RCE, ATO, full-compromise]
+  category: chains
+  related_skills:
+    - cross-attack-chains
+    - cors-credential-wordpress
+    - xmlrpc-exploitation
+    - phpinfo-to-rce
+    - wordpress-plugin-hunt
+    - wp-mass-recon
+    - source-leak-hunt
+    - deep-invade
 ---
 
 # WordPress Full Compromise Skill

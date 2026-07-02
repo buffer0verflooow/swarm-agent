@@ -7,12 +7,11 @@ license: MIT
 platforms: [linux]
 compatibility: Requires python3, playwright
 metadata:
-  hermes:
-    tags: [recon, humanize, behavioral, anti-bot, mouse, keyboard, automation]
-    category: recon
-    related_skills:
-      - stealth-browser-launch
-      - tls-fingerprint-impersonation
+  tags: [recon, humanize, behavioral, anti-bot, mouse, keyboard, automation]
+  category: recon
+  related_skills:
+    - stealth-browser-launch
+    - tls-fingerprint-impersonation
 ---
 
 # Humanize Automation

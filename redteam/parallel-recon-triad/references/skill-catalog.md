@@ -1,10 +1,10 @@
-# agentiko — Complete Skill Catalog (207 skills)
+# Complete Skill Catalog (207 skills)
 
-Comprehensive catalog of all skills in the agentiko ecosystem. Generated from field analysis of the complete Hermes skill index at `~/.hermes/skills/`.
+Comprehensive catalog of all skills in the skill ecosystem. Generated from field analysis of the complete skill index.
 
 ---
 
-## 1. agentiko Custom Skills (33)
+## 1. Custom Skills (33)
 
 ### recon/ (21) — Discovery, fingerprinting, batch scanning
 
@@ -227,7 +227,7 @@ architecture-diagram, ascii-art, ascii-video, baoyu-infographic, claude-design, 
 github-auth, github-code-review, github-issues, github-pr-workflow, github-repo-management, codebase-inspection
 
 ### Software Development (10)
-plan, spike, systematic-debugging, test-driven-development, python-debugpy, node-inspect-debugger, requesting-code-review, simplify-code, hermes-agent-skill-authoring, skill-library-maintenance
+plan, spike, systematic-debugging, test-driven-development, python-debugpy, node-inspect-debugger, requesting-code-review, simplify-code, skill-library-maintenance
 
 ### MLOps (6)
 huggingface-hub, llama-cpp, serving-llms-vllm, evaluating-llms-harness, weights-and-biases, segment-anything-model, audiocraft-audio-generation
@@ -242,7 +242,7 @@ youtube-content, gif-search, heartmula, songsee
 arxiv, blogwatcher, llm-wiki, polymarket
 
 ### Autonomous AI (4)
-claude-code, codex, opencode, hermes-agent
+claude-code, codex, opencode
 
 ### Other
 email/himalaya, data-science/jupyter-live-kernel, note-taking/obsidian, smart-home/openhue, social-media/xurl, computer-use, dogfood, yuanbao
@@ -253,4 +253,4 @@ email/himalaya, data-science/jupyter-live-kernel, note-taking/obsidian, smart-ho
 
 When loading skills via `skill_view()` or referencing in cron jobs, use the skill's registered name (not the filesystem path). The Hermes skill index resolves these automatically. To browse: use `skills_list()` with optional category filter.
 
-For skills in the redteam/ directory, the name alone works (e.g., `hunt-xss`, `web2-recon`). For agentiko skills, use the name as listed in the agentiko custom section above.
+For skills in the redteam/ directory, the name alone works (e.g., `hunt-xss`, `web2-recon`). For custom skills, use the name as listed in the custom section above.

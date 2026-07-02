@@ -7,14 +7,13 @@ license: MIT
 platforms: [linux, macos, any]
 compatibility: Requires python3, curl
 metadata:
-  hermes:
-    tags: [recon, wordpress, rest-api, auth-bypass, plugin-exploit, unauthorized-access, content-publishing]
-    category: recon
-    related_skills:
-      - firebase-supabase-attack
-      - js-secrets-extraction
-      - hunt-api-misconfig
-      - source-leak-hunt
+  tags: [recon, wordpress, rest-api, auth-bypass, plugin-exploit, unauthorized-access, content-publishing]
+  category: recon
+  related_skills:
+    - firebase-supabase-attack
+    - js-secrets-extraction
+    - hunt-api-misconfig
+    - source-leak-hunt
 ---
 
 # WordPress Plugin REST API — Auth Bypass

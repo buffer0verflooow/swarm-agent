@@ -7,13 +7,12 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
 metadata:
-  hermes:
-    tags: [recon, JWT, token, forge, brute-force]
-    category: recon
-    related_skills:
-      - api-noauth-hunt
-      - js-secrets-extraction
-      - firebase-supabase-attack
+  tags: [recon, JWT, token, forge, brute-force]
+  category: recon
+  related_skills:
+    - api-noauth-hunt
+    - js-secrets-extraction
+    - firebase-supabase-attack
 ---
 
 # JWT Attack Skill

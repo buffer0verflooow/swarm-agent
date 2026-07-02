@@ -7,17 +7,16 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
 metadata:
-  hermes:
-    tags: [recon, subdomain, staging, takeover, wordpress]
-    category: recon
-    related_skills:
-      - wp-mass-recon
-      - deep-invade
-      - subdomain-enumeration
-      - wordpress-plugin-hunt
-      - js-secrets-extraction
-      - source-leak-hunt
-      - phpinfo-to-rce
+  tags: [recon, subdomain, staging, takeover, wordpress]
+  category: recon
+  related_skills:
+    - wp-mass-recon
+    - deep-invade
+    - subdomain-enumeration
+    - wordpress-plugin-hunt
+    - js-secrets-extraction
+    - source-leak-hunt
+    - phpinfo-to-rce
 ---
 
 # Staging & Subdomain Hunt Skill

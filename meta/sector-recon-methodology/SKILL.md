@@ -7,16 +7,15 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
 metadata:
-  hermes:
-    tags: [meta, sector, methodology, target-selection, us-companies]
-    category: meta
-    related_skills:
-      - recon-playbook
-      - wp-mass-recon
-      - attack-patterns-reference
-      - subdomain-enumeration
-      - cross-wave-delta-analysis
-      - web-enumeration
+  tags: [meta, sector, methodology, target-selection, us-companies]
+  category: meta
+  related_skills:
+    - recon-playbook
+    - wp-mass-recon
+    - attack-patterns-reference
+    - subdomain-enumeration
+    - cross-wave-delta-analysis
+    - web-enumeration
 ---
 
 # Sector Recon Methodology Skill
@@ -301,9 +300,8 @@ author: uphiago
 license: MIT
 platforms: [linux]
 metadata:
-  hermes:
-    tags: [recon, sector, SECTORNAME]
-    category: recon
+  tags: [recon, sector, SECTORNAME]
+  category: recon
 ---
 
 # SECTOR NAME Recon Skill

@@ -7,14 +7,13 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
 metadata:
-  hermes:
-    tags: [recon, subdomain, DNS, crt.sh, asset-discovery]
-    category: recon
-    related_skills:
-      - wp-mass-recon
-      - staging-subdomain-hunt
-      - deep-invade
-      - recon-playbook
+  tags: [recon, subdomain, DNS, crt.sh, asset-discovery]
+  category: recon
+  related_skills:
+    - wp-mass-recon
+    - staging-subdomain-hunt
+    - deep-invade
+    - recon-playbook
 ---
 
 # Subdomain Enumeration Skill

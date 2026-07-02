@@ -7,13 +7,12 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, python3
 metadata:
-  hermes:
-    tags: [recon, password, credential, hardcoded, HTML, javascript, API]
-    category: recon
-    related_skills:
-      - api-noauth-hunt
-      - js-secrets-extraction
-      - source-leak-hunt
+  tags: [recon, password, credential, hardcoded, HTML, javascript, API]
+  category: recon
+  related_skills:
+    - api-noauth-hunt
+    - js-secrets-extraction
+    - source-leak-hunt
 ---
 
 # Hardcoded Credential Hunt

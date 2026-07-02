@@ -7,15 +7,14 @@ license: MIT
 platforms: [linux, macos, any]
 compatibility: Requires python3, requests
 metadata:
-  hermes:
-    tags: [redteam, llm, ai, prompt-injection, jailbreak, gpt-4o, openai, rag, agentic-ai, indirect-injection]
-    category: redteam
-    related_skills:
-      - js-secrets-extraction
-      - source-leak-hunt
-      - hunt-llm-ai
-      - hunt-api-misconfig
-      - hunt-ssrf
+  tags: [redteam, llm, ai, prompt-injection, jailbreak, gpt-4o, openai, rag, agentic-ai, indirect-injection]
+  category: redteam
+  related_skills:
+    - js-secrets-extraction
+    - source-leak-hunt
+    - hunt-llm-ai
+    - hunt-api-misconfig
+    - hunt-ssrf
 ---
 
 # LLM Prompt Injection — Technique & Defense Catalog

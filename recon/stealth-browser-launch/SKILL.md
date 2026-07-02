@@ -7,14 +7,13 @@ license: MIT
 platforms: [linux]
 compatibility: Requires python3, pip, playwright
 metadata:
-  hermes:
-    tags: [recon, stealth, browser, anti-bot, fingerprint, chromium, playwright]
-    category: recon
-    related_skills:
-      - humanize-automation
-      - tls-fingerprint-impersonation
-      - http2-header-impersonation
-      - proxy-geoip-automation
+  tags: [recon, stealth, browser, anti-bot, fingerprint, chromium, playwright]
+  category: recon
+  related_skills:
+    - humanize-automation
+    - tls-fingerprint-impersonation
+    - http2-header-impersonation
+    - proxy-geoip-automation
 ---
 
 # Stealth Browser Launch

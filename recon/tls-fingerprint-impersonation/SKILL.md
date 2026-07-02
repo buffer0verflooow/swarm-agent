@@ -7,13 +7,12 @@ license: MIT
 platforms: [linux]
 compatibility: Requires python3, pip, or rust toolchain
 metadata:
-  hermes:
-    tags: [recon, TLS, JA3, JA4, fingerprint, impersonation, HTTP, browser]
-    category: recon
-    related_skills:
-      - http2-header-impersonation
-      - stealth-browser-launch
-      - humanize-automation
+  tags: [recon, TLS, JA3, JA4, fingerprint, impersonation, HTTP, browser]
+  category: recon
+  related_skills:
+    - http2-header-impersonation
+    - stealth-browser-launch
+    - humanize-automation
 ---
 
 # TLS Fingerprint Impersonation

@@ -7,13 +7,12 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
 metadata:
-  hermes:
-    tags: [recon, zimbra, SOAP, user-enum, CVE, email]
-    category: recon
-    related_skills:
-      - exchange-owa-attack
-      - port-service-discovery
-      - subdomain-enumeration
+  tags: [recon, zimbra, SOAP, user-enum, CVE, email]
+  category: recon
+  related_skills:
+    - exchange-owa-attack
+    - port-service-discovery
+    - subdomain-enumeration
 ---
 
 # Zimbra Attack Skill
