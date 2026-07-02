@@ -1,6 +1,6 @@
 # 🛡️ Recon & Pentest Skill Pack
 
-**152 offensive security skills** for recon and pentest. Field-validated techniques from **600+ company targets** across **45+ sectors**. Updated with web enum, email sec, google dorks, cloud IAM, WordPress full compromise chains.
+**156 offensive security skills** for recon and pentest. Field-validated techniques from **600+ company targets** across **45+ sectors**. Updated with browser fingerprint evasion, anti-bot bypass, hardcoded credential hunting, SCADA/ICS enumeration.
 
 > 📖 **Blog & research**: [hiago.sh](https://hiago.sh) — Pentest Playbook, field notes, and tooling.
 
@@ -8,13 +8,13 @@
 
 ---
 
-## 📦 What's Inside (152 skills)
+## 📦 What's Inside (156 skills)
 
 ```
 recon-skills/
 ├── SOUL.md                  — Philosophy & agent operating instructions
 ├── AGENTS.md                — Complete catalog + HARDLINE skill standards
-├── recon/          (29)     — WordPress/CORS/XMLRPC recon, source leaks, JS secrets, web enum, email sec, staging hunt, port scans, hardcoded creds, S3/MinIO XSS, API flow hijack, SCADA Hikvision ISAPI
+├── recon/          (33)     — WordPress/CORS/XMLRPC recon, source leaks, JS secrets, web enum, email sec, staging hunt, port scans, hardcoded creds, S3/MinIO XSS, API flow hijack, SCADA Hikvision ISAPI, stealth browser, humanize automation, TLS fingerprint, HTTP/2 headers
 ├── redteam/        (107)    — 54 hunt-* (xss, sqli, ssrf, rce, ato, idor, cors, firebase, supabase, schema-enum, write-gap, metrics, k8s, etc) + 24 sector recon + 29 methodology/ops
 ├── meta/           (6)      — Recon playbook, sector methodology, attack patterns, wave delta, google dorks, pentest playbook
 ├── chains/         (2)      — Cross-attack chaining, WordPress full compromise
@@ -49,6 +49,10 @@ recon-skills/
 | **recon** | `s3-minio-content-type-xss` | Content-Type override on public S3/MinIO buckets → stored XSS on target origin |
 | **recon** | `unauth-api-flow-hijack` | Exploit multi-step API flows without auth: start→submit→upload→export |
 | **recon** | `scada-hikvision-isapi` | Enumerate Hikvision ISAPI endpoints, cameras, RTSP on SCADA/IoT web interfaces |
+| **recon** | `stealth-browser-launch` | C++ patched Chromium — 18 fingerprint flags, bypass Cloudflare/reCAPTCHA/FingerprintJS |
+| **recon** | `humanize-automation` | Bézier mouse, mistype keyboard, accel-cruise-decel scroll for behavioral bypass |
+| **recon** | `tls-fingerprint-impersonation` | 20 browser profiles (Chrome/Firefox/Safari/OkHttp) with JA4 TLS validation |
+| **recon** | `http2-header-impersonation` | HTTP/2 SETTINGS spoofing, pseudo-header order, browser sec-ch-ua headers |
 | **redteam** | `parallel-recon-triad` | 3 parallel subagents every 20min: Deep Invade + Expand + Skill Evolution |
 | **redteam** | `ops-proxyns` | Kernel-level proxy via network namespaces — Tor for all traffic |
 | **redteam** | `cloud-iam-deep` | AWS/GCP/Azure IAM enumeration, SA key abuse, Cloud Run, Artifact Registry |
