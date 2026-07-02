@@ -21,8 +21,6 @@ recon-skills/
 ├── auth/           (1)      — SAML SSO attacks
 ├── infra/          (1)      — Docker privilege escalation
 ├── attacks/        (2)      — Flask Werkzeug debugger RCE
-├── agentiko-hermes/        — Hermes agent operating spec
-└── agentiko-worker/         — Worker runtime spec + references
 ```
 
 ## 🔥 Key Skills

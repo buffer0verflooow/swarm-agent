@@ -7,13 +7,12 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
 metadata:
-  hermes:
-    tags: [recon, port-scan, masscan, rustscan, nmap, infrastructure]
-    category: recon
-    related_skills:
-      - port-service-discovery
-      - iot-camera-recon
-      - exchange-owa-attack
+  tags: [recon, port-scan, masscan, rustscan, nmap, infrastructure]
+  category: recon
+  related_skills:
+    - port-service-discovery
+    - iot-camera-recon
+    - exchange-owa-attack
 ---
 
 # Port Mass Scan Skill

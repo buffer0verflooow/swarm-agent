@@ -115,5 +115,5 @@ cronjob action=create \\\
   prompt="[THIS ENTIRE PROMPT]"
 ```
 
-**⚠️ agentiko-recon skill does not exist** — never reference it in skills list.
+**⚠️ recon skill does not exist** — never reference it in skills list.
 **⚠️ Prompt must be self-contained** — the cron agent has no access to your conversation history or skills beyond what you pass in the `skills` field and `prompt` field.

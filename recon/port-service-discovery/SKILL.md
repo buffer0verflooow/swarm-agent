@@ -7,15 +7,14 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
 metadata:
-  hermes:
-    tags: [recon, port-scan, mysql, FTP, SSH, internal-api]
-    category: recon
-    related_skills:
-      - deep-invade
-      - wp-mass-recon
-      - cross-attack-chains
-      - staging-subdomain-hunt
-      - xmlrpc-exploitation
+  tags: [recon, port-scan, mysql, FTP, SSH, internal-api]
+  category: recon
+  related_skills:
+    - deep-invade
+    - wp-mass-recon
+    - cross-attack-chains
+    - staging-subdomain-hunt
+    - xmlrpc-exploitation
 ---
 
 # Port & Service Discovery Skill

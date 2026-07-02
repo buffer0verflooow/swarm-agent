@@ -5,24 +5,23 @@ version: 1.1.0
 author: uphiago
 license: MIT
 metadata:
-  hermes:
-    tags: [meta, reference, patterns, bypass, catalog]
-    category: meta
-    related_skills:
-      - wp-mass-recon
-      - cors-credential-wordpress
-      - xmlrpc-exploitation
-      - cross-attack-chains
-      - deep-invade
-      - error-log-mining
-      - source-leak-hunt
-      - phpinfo-to-rce
-      - port-service-discovery
-      - js-secrets-extraction
-      - staging-subdomain-hunt
-      - subdomain-enumeration
-      - wordpress-plugin-hunt
-      - web-enumeration
+  tags: [meta, reference, patterns, bypass, catalog]
+  category: meta
+  related_skills:
+    - wp-mass-recon
+    - cors-credential-wordpress
+    - xmlrpc-exploitation
+    - cross-attack-chains
+    - deep-invade
+    - error-log-mining
+    - source-leak-hunt
+    - phpinfo-to-rce
+    - port-service-discovery
+    - js-secrets-extraction
+    - staging-subdomain-hunt
+    - subdomain-enumeration
+    - wordpress-plugin-hunt
+    - web-enumeration
 ---
 
 # Attack Patterns Reference Skill

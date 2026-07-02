@@ -8,12 +8,11 @@ platforms: [linux]
 compatibility: Requires curl, nmap, python3
 disable-model-invocation: true
 metadata:
-  hermes:
-    tags: [infra, docker, privilege-escalation, container-escape]
-    category: infra
-    related_skills:
-      - port-service-discovery
-      - api-noauth-hunt
+  tags: [infra, docker, privilege-escalation, container-escape]
+  category: infra
+  related_skills:
+    - port-service-discovery
+    - api-noauth-hunt
 ---
 
 # Docker Privilege Escalation Skill

@@ -7,14 +7,13 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, python3
 metadata:
-  hermes:
-    tags: [recon, API, unauthenticated, flow, interview, form, upload, export]
-    category: recon
-    related_skills:
-      - api-noauth-hunt
-      - hardcoded-credential-hunt
-      - hunt-write-gap
-      - hunt-idor
+  tags: [recon, API, unauthenticated, flow, interview, form, upload, export]
+  category: recon
+  related_skills:
+    - api-noauth-hunt
+    - hardcoded-credential-hunt
+    - hunt-write-gap
+    - hunt-idor
 ---
 
 # Unauthenticated API Flow Hijack

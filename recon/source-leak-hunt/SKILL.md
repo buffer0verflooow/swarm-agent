@@ -7,15 +7,14 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
 metadata:
-  hermes:
-    tags: [recon, source-leak, exposure, secrets, wordpress]
-    category: recon
-    related_skills:
-      - wp-mass-recon
-      - js-secrets-extraction
-      - error-log-mining
-      - phpinfo-to-rce
-      - deep-invade
+  tags: [recon, source-leak, exposure, secrets, wordpress]
+  category: recon
+  related_skills:
+    - wp-mass-recon
+    - js-secrets-extraction
+    - error-log-mining
+    - phpinfo-to-rce
+    - deep-invade
 ---
 
 # Source Leak Hunt Skill

@@ -7,13 +7,12 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
 metadata:
-  hermes:
-    tags: [auth, SAML, SSO, XML-signature, identity]
-    category: auth
-    related_skills:
-      - jwt-attack
-      - exchange-owa-attack
-      - api-noauth-hunt
+  tags: [auth, SAML, SSO, XML-signature, identity]
+  category: auth
+  related_skills:
+    - jwt-attack
+    - exchange-owa-attack
+    - api-noauth-hunt
 ---
 
 # SAML SSO Attack Skill

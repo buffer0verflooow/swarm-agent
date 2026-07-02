@@ -7,20 +7,19 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
 metadata:
-  hermes:
-    tags: [recon, pentest, deep, SSRF, CVE, wordpress]
-    category: recon
-    related_skills:
-      - wp-mass-recon
-      - xmlrpc-exploitation
-      - error-log-mining
-      - js-secrets-extraction
-      - staging-subdomain-hunt
-      - wordpress-plugin-hunt
-      - port-service-discovery
-      - cors-credential-wordpress
-      - source-leak-hunt
-      - phpinfo-to-rce
+  tags: [recon, pentest, deep, SSRF, CVE, wordpress]
+  category: recon
+  related_skills:
+    - wp-mass-recon
+    - xmlrpc-exploitation
+    - error-log-mining
+    - js-secrets-extraction
+    - staging-subdomain-hunt
+    - wordpress-plugin-hunt
+    - port-service-discovery
+    - cors-credential-wordpress
+    - source-leak-hunt
+    - phpinfo-to-rce
 ---
 
 # Deep Invade Skill

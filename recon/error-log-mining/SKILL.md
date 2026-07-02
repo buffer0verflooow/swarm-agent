@@ -7,14 +7,13 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
 metadata:
-  hermes:
-    tags: [recon, error-log, credentials, wordpress, data-mining]
-    category: recon
-    related_skills:
-      - deep-invade
-      - source-leak-hunt
-      - phpinfo-to-rce
-      - wordpress-full-compromise
+  tags: [recon, error-log, credentials, wordpress, data-mining]
+  category: recon
+  related_skills:
+    - deep-invade
+    - source-leak-hunt
+    - phpinfo-to-rce
+    - wordpress-full-compromise
 ---
 
 # Error Log Mining Skill

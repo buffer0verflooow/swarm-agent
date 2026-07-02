@@ -7,14 +7,13 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, python3, awscli
 metadata:
-  hermes:
-    tags: [recon, S3, MinIO, bucket, XSS, Content-Type, cloud, storage]
-    category: recon
-    related_skills:
-      - hunt-xss
-      - hunt-cloud-misconfig
-      - firebase-supabase-attack
-      - js-secrets-extraction
+  tags: [recon, S3, MinIO, bucket, XSS, Content-Type, cloud, storage]
+  category: recon
+  related_skills:
+    - hunt-xss
+    - hunt-cloud-misconfig
+    - firebase-supabase-attack
+    - js-secrets-extraction
 ---
 
 # S3/MinIO Content-Type Override to Stored XSS

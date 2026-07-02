@@ -7,13 +7,12 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
 metadata:
-  hermes:
-    tags: [recon, cache-poisoning, WCD, web-cache, CDN]
-    category: recon
-    related_skills:
-      - wp-mass-recon
-      - cors-credential-wordpress
-      - staging-subdomain-hunt
+  tags: [recon, cache-poisoning, WCD, web-cache, CDN]
+  category: recon
+  related_skills:
+    - wp-mass-recon
+    - cors-credential-wordpress
+    - staging-subdomain-hunt
 ---
 
 # Cache Attack Skill

@@ -149,7 +149,7 @@ cronjob action=create \
 ```
 
 **Important**: schedule is 20min not 5min. Agents take ~15min. When they finish, ~5min gap before next wave. Never more than 3 concurrent (delegate_task max_concurrent_children=3).
-**⚠️ agentiko-recon skill does not exist**: Do NOT reference `agentiko-recon` in the cron skills list or the related skills section. The prompt must be fully self-contained with the complete orchestrator instruction.
+**⚠️ recon skill does not exist**: Do NOT reference `recon` in the cron skills list or the related skills section. The prompt must be fully self-contained with the complete orchestrator instruction.
 
 ### 4. Proxy/OPSEC Setup (BEFORE starting agents)
 ```bash
@@ -173,7 +173,7 @@ See `ops-proxyns` skill for kernel-level proxy-ns setup (requires Go to compile)
 
 ### 5. Skill Library by Category (207 total — see `references/skill-catalog.md` for full catalog)
 
-#### agentiko Custom (33 skills)
+#### Custom Skills (33)
 - **recon/** (21) — wp-mass-recon, deep-invade, cors-credential-wordpress, xmlrpc-exploitation, source-leak-hunt, error-log-mining, js-secrets-extraction, phpinfo-to-rce, subdomain-enumeration, port-mass-scan, port-service-discovery, wordpress-plugin-hunt, staging-subdomain-hunt, cache-attack, firebase-supabase-attack, exchange-owa-attack, zimbra-attack, api-noauth-hunt, gitlab-public-recon, jwt-attack, iot-camera-recon
 - **chains/** (2) — cross-attack-chains, wordpress-full-compromise
 - **meta/** (4) — recon-playbook, sector-recon-methodology, attack-patterns-reference, pentest-playbook
@@ -561,7 +561,7 @@ cronjob action=create \
 **Key rules**:
 - Always **remove** cron, not pause — pause keeps the schedule slot but errored last-run doesn't help
 - Prompt must be **fully self-contained** — cron agent has no conversation history
-- Never reference `agentiko-recon` (doesn't exist) in skills list or prompt
+- Never reference `recon` (doesn't exist) in skills list or prompt
 - Verify output directories still exist before restarting
 
 ### Pitfalls
@@ -609,7 +609,7 @@ cronjob action=create \
 - **Terminal foreground blocks `&` backgrounding**: The `terminal` tool rejects foreground commands that use shell-level `&` with: "Foreground command uses '&' backgrounding. Use terminal(background=true)...". To run parallel tasks across multiple targets, write a script file and execute it with `terminal(background=true, notify_on_complete=true)`.
 - **nmap broken on Alpine workers**: `nmap -sV` fails with "could not locate nse_main.lua"
 - **BusyBox grep — no `-P` (PCRE)**: Alpine's grep doesn't support `-P`. Use Python3 for complex regex matching. Use `grep -oE` for extended regex as a fallback.
-- **agentiko-recon skill is DELETED**: Do NOT reference it in cron skills lists.
+- **recon skill is DELETED**: Do NOT reference it in cron skills lists.
 - **Subagent max_spawn_depth=1**: subagents cannot re-delegate.
 - **ifconfig.me blocks Tor**: Use httpbin.org/ip for IP verification through proxy.
 - **Tor startup**: Requires `--DataDirectory /tmp/tordata` with writable directory, and ~5s for bootstrap.

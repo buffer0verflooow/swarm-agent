@@ -7,20 +7,19 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
 metadata:
-  hermes:
-    tags: [meta, playbook, pipeline, optimization, workflow]
-    category: meta
-    related_skills:
-      - wp-mass-recon
-      - subdomain-enumeration
-      - sector-recon-methodology
-      - attack-patterns-reference
-      - deep-invade
-      - cors-credential-wordpress
-      - xmlrpc-exploitation
-      - source-leak-hunt
-      - web-enumeration
-      - cross-wave-delta-analysis
+  tags: [meta, playbook, pipeline, optimization, workflow]
+  category: meta
+  related_skills:
+    - wp-mass-recon
+    - subdomain-enumeration
+    - sector-recon-methodology
+    - attack-patterns-reference
+    - deep-invade
+    - cors-credential-wordpress
+    - xmlrpc-exploitation
+    - source-leak-hunt
+    - web-enumeration
+    - cross-wave-delta-analysis
 ---
 
 # Recon Playbook Skill
@@ -32,7 +31,7 @@ The master playbook that orchestrates all recon skills in the optimal sequence f
 - Starting a new recon engagement with a target list.
 - You have limited time and need to maximize findings.
 - After `sector-recon-methodology` produces a target list.
-- Training — this is the canonical workflow for agentiko recon.
+- Training — this is the canonical workflow for automated recon.
 
 ## Prerequisites
 
