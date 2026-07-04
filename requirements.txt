@@ -1,0 +1,16 @@
+# Swarm Knowledge Base — Dependencies (SQLite edition)
+# Zero server dependencies. Everything in one .db file.
+
+# Core (stdlib — no install needed)
+#   sqlite3, json, hashlib, uuid, pathlib, datetime, logging
+
+# Clustering
+numpy>=1.24
+networkx>=3.0
+
+# Embeddings (optional — pick one)
+# sentence-transformers>=2.2     # local
+# openai>=1.0                    # API
+
+# Dev
+pytest>=7.0

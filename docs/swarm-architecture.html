@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>蜂群 Agent 知识系统 — 架构详解</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #020617;
+  --bg-card: #0f172a;
+  --bg-elev: #1e293b;
+  --border: #334155;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --text-mute: #64748b;
+  --cyan: #22d3ee;
+  --emerald: #34d399;
+  --violet: #a78bfa;
+  --amber: #fbbf24;
+  --rose: #fb7185;
+  --orange: #fb923c;
+  --slate: #94a3b8;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Noto Sans SC', 'JetBrains Mono', monospace;
+  line-height: 1.7;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+/* ── Header ── */
+.hero {
+  background: linear-gradient(180deg, #020617 0%, #0a1525 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 80px 40px 60px;
+  text-align: center;
+  position: relative;
+}
+.hero::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image: 
+    radial-gradient(circle at 20% 50%, rgba(34,211,238,0.06) 0%, transparent 50%),
+    radial-gradient(circle at 80% 50%, rgba(167,139,250,0.06) 0%, transparent 50%);
+  pointer-events: none;
+}
+.hero h1 {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 2.4rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 12px;
+  position: relative;
+}
+.hero h1 .accent { color: var(--cyan); }
+.hero .subtitle {
+  color: var(--text-dim);
+  font-size: 1.05rem;
+  font-weight: 300;
+  max-width: 700px;
+  margin: 0 auto;
+  position: relative;
+}
+.hero .meta {
+  margin-top: 24px;
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  flex-wrap: wrap;
+  position: relative;
+}
+.hero .meta span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--text-mute);
+}
+.hero .meta strong { color: var(--cyan); }
+.pulse-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--emerald);
+  margin-right: 8px;
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52,211,153,0.4); }
+  50% { opacity: 0.6; box-shadow: 0 0 0 8px rgba(52,211,153,0); }
+}
+
+/* ── Layout ── */
+.container { max-width: 1100px; margin: 0 auto; padding: 0 40px; }
+section { padding: 60px 0; border-bottom: 1px solid var(--border); }
+section:last-child { border-bottom: none; }
+.section-tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+.section-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+  letter-spacing: -0.01em;
+}
+.section-desc {
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  margin-bottom: 32px;
+  max-width: 700px;
+}
+
+/* ── Cards ── */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  margin: 32px 0;
+}
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 24px;
+  position: relative;
+  transition: border-color 0.3s;
+}
+.card:hover { border-color: var(--cyan); }
+.card .card-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+.card h3 { font-size: 1.1rem; font-weight: 500; margin-bottom: 8px; }
+.card p { color: var(--text-dim); font-size: 0.85rem; line-height: 1.6; }
+.card .card-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin: 4px 0;
+}
+
+/* ── Code ── */
+pre, code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82rem;
+}
+pre {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+code { color: var(--cyan); }
+.kw { color: var(--violet); }
+.str { color: var(--emerald); }
+.cmt { color: var(--text-mute); }
+
+/* ── Table ── */
+table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+th, td { padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+th {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-mute);
+}
+td { font-size: 0.88rem; }
+td:first-child { color: var(--cyan); font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; }
+
+/* ── SVG container ── */
+.diagram-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  margin: 24px 0;
+  overflow-x: auto;
+}
+.diagram-wrap svg { display: block; margin: 0 auto; }
+
+/* ── Badge ── */
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 500;
+  margin-right: 6px;
+}
+.badge-ok { background: rgba(52,211,153,0.15); color: var(--emerald); border: 1px solid rgba(52,211,153,0.3); }
+.badge-pending { background: rgba(251,191,36,0.15); color: var(--amber); border: 1px solid rgba(251,191,36,0.3); }
+
+/* ── Footer ── */
+footer {
+  padding: 40px;
+  text-align: center;
+  border-top: 1px solid var(--border);
+  color: var(--text-mute);
+  font-size: 0.8rem;
+}
+</style>
+</head>
+<body>
+
+<!-- ════ Hero ════ -->
+<div class="hero">
+  <h1>蜂群 Agent <span class="accent">知识系统</span></h1>
+  <div class="subtitle">
+    基于 Stigmergy 间接协调模式的蜂群智能体架构 — Agent 通过共享 SQLite 知识库自然涌现协作，
+    不直接通信，不自上而下调度
+  </div>
+  <div class="meta">
+    <span><span class="pulse-dot"></span>系统状态: <strong>全部功能已实现</strong></span>
+    <span>代码: <strong>4,808 行 Python</strong></span>
+    <span>存储: <strong>25 张 SQLite 表</strong></span>
+    <span>知识: <strong>37 条 (L1-L4)</strong></span>
+  </div>
+</div>
+
+<!-- ════ 1. 核心设计哲学 ════ -->
+<div class="container">
+<section>
+  <div class="section-tag">01 / DESIGN PHILOSOPHY</div>
+  <div class="section-title">为什么用 Stigmergy，不用 Hierarchical</div>
+  <div class="section-desc">
+    探索型安全任务（漏洞挖掘）的搜索空间不可预分解。Hierarchical 需要 supervisor 提前知道任务分解才能分配——
+    但你不知道会找到什么。Stigmergic 模式让 agent 通过 KB 信号自然协调：发现漏洞 → capture → 自动触发 spawn exploiter。
+  </div>
+
+  <div class="card-grid">
+    <div class="card" style="border-left: 3px solid var(--rose);">
+      <div class="card-label" style="color: var(--rose);">Hierarchical — 不适合</div>
+      <h3>需要预知分解</h3>
+      <p>Supervisor 必须在任务开始前知道完整的子任务列表。探索型任务无法满足：发现一个漏洞才知道下一步该干什么。每次分支都需要回到 supervisor 重新规划。</p>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--emerald);">
+      <div class="card-label" style="color: var(--emerald);">Stigmergic — 适合</div>
+      <h3>涌现式协调</h3>
+      <p>Agent 不直接通信，而是通过共享环境（SQLite KB）留下信号。其他 agent 轮询检测信号并响应。自然异步、高可扩展、无单点控制。来自生物学：蚂蚁通过信息素间接协作。</p>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--amber);">
+      <div class="card-label" style="color: var(--amber);">混合模式 — 实际实现</div>
+      <h3>集中规划 + 并行执行</h3>
+      <p>执行可以并行（多个 agent 独立探索），但需要全局信息的决策（预算分配、链深控制）由 Orchestrator 集中处理。这是 AWS Security Agent 的实际架构。</p>
+    </div>
+  </div>
+</section>
+</div>
+
+<!-- ════ 2. 架构分层图 ════ -->
+<div class="container">
+<section>
+  <div class="section-tag">02 / ARCHITECTURE LAYERS</div>
+  <div class="section-title">五层架构</div>
+  <div class="section-desc">从上到下：编排器 → 信号层 → 知识层 → 治理引擎 → 捕获层。每层只依赖下层，不跨层调用。</div>
+
+  <div class="diagram-wrap">
+    <svg width="1000" height="580" viewBox="0 0 1000 580">
+      <!-- Grid background -->
+      <defs>
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+        </pattern>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+        </marker>
+        <marker id="arrow-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#22d3ee"/>
+        </marker>
+        <marker id="arrow-emerald" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#34d399"/>
+        </marker>
+      </defs>
+      <rect width="1000" height="580" fill="url(#grid)"/>
+
+      <!-- Layer 1: Orchestrator -->
+      <rect x="50" y="20" width="900" height="90" rx="6" fill="rgba(120,53,15,0.2)" stroke="#fbbf24" stroke-width="1.5"/>
+      <rect x="50" y="20" width="900" height="90" rx="6" fill="#0f172a" opacity="0.6"/>
+      <text x="70" y="45" fill="#fbbf24" font-family="JetBrains Mono" font-size="11" font-weight="700">ORCHESTRATOR — 四循环编排器</text>
+      <text x="70" y="62" fill="#94a3b8" font-family="JetBrains Mono" font-size="9">orchestrator.py · 389行</text>
+      
+      <!-- 4 loops -->
+      <rect x="70" y="72" width="195" height="28" rx="4" fill="rgba(251,191,36,0.1)" stroke="#fbbf24" stroke-width="1"/>
+      <text x="167" y="89" text-anchor="middle" fill="#fbbf24" font-family="JetBrains Mono" font-size="9">5s: Spawn 处理</text>
+      
+      <rect x="275" y="72" width="195" height="28" rx="4" fill="rgba(251,191,36,0.1)" stroke="#fbbf24" stroke-width="1"/>
+      <text x="372" y="89" text-anchor="middle" fill="#fbbf24" font-family="JetBrains Mono" font-size="9">10s: 心跳清理</text>
+      
+      <rect x="480" y="72" width="195" height="28" rx="4" fill="rgba(251,191,36,0.15)" stroke="#fbbf24" stroke-width="1"/>
+      <text x="577" y="89" text-anchor="middle" fill="#fbbf24" font-family="JetBrains Mono" font-size="9">15s: Power Schedule ★</text>
+      
+      <rect x="685" y="72" width="195" height="28" rx="4" fill="rgba(251,191,36,0.1)" stroke="#fbbf24" stroke-width="1"/>
+      <text x="782" y="89" text-anchor="middle" fill="#fbbf24" font-family="JetBrains Mono" font-size="9">60s: Governance</text>
+
+      <!-- Arrow down -->
+      <line x1="500" y1="115" x2="500" y2="135" stroke="#64748b" stroke-width="1" marker-end="url(#arrow)"/>
+
+      <!-- Layer 2: Stigmergy Signal -->
+      <rect x="50" y="140" width="900" height="85" rx="6" fill="rgba(251,146,60,0.15)" stroke="#fb923c" stroke-width="1.5"/>
+      <rect x="50" y="140" width="900" height="85" rx="6" fill="#0f172a" opacity="0.6"/>
+      <text x="70" y="165" fill="#fb923c" font-family="JetBrains Mono" font-size="11" font-weight="700">STIGMERGY 信号层 — 间接协调总线</text>
+      <text x="70" y="182" fill="#94a3b8" font-family="JetBrains Mono" font-size="9">spawner.py · lifecycle.py</text>
+      
+      <rect x="70" y="192" width="410" height="24" rx="4" fill="rgba(251,146,60,0.08)" stroke="#fb923c" stroke-width="0.8"/>
+      <text x="275" y="208" text-anchor="middle" fill="#fb923c" font-family="JetBrains Mono" font-size="9">spawn_requests: 信号总线 (chain_depth · TTL · 去重合并)</text>
+      
+      <rect x="520" y="192" width="360" height="24" rx="4" fill="rgba(251,146,60,0.08)" stroke="#fb923c" stroke-width="0.8"/>
+      <text x="700" y="208" text-anchor="middle" fill="#fb923c" font-family="JetBrains Mono" font-size="9">agent_heartbeats: 30s心跳 · load_score · 超时清理</text>
+
+      <!-- Arrow down -->
+      <line x1="500" y1="230" x2="500" y2="250" stroke="#64748b" stroke-width="1" marker-end="url(#arrow)"/>
+
+      <!-- Layer 3: DIKW Knowledge -->
+      <rect x="50" y="255" width="900" height="85" rx="6" fill="rgba(76,29,149,0.3)" stroke="#a78bfa" stroke-width="1.5"/>
+      <rect x="50" y="255" width="900" height="85" rx="6" fill="#0f172a" opacity="0.6"/>
+      <text x="70" y="280" fill="#a78bfa" font-family="JetBrains Mono" font-size="11" font-weight="700">DIKW 知识层 — 四级金字塔</text>
+      <text x="70" y="297" fill="#94a3b8" font-family="JetBrains Mono" font-size="9">db.py · retrieval.py · 31条知识 · 35条lineage</text>
+      
+      <rect x="70" y="307" width="200" height="24" rx="4" fill="rgba(167,139,250,0.08)" stroke="#a78bfa" stroke-width="0.8"/>
+      <text x="170" y="323" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="9">L1 Data (22) · FTS5检索</text>
+      
+      <rect x="280" y="307" width="200" height="24" rx="4" fill="rgba(167,139,250,0.12)" stroke="#a78bfa" stroke-width="0.8"/>
+      <text x="380" y="323" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="9">L2 Info (7) · trust_vector</text>
+      
+      <rect x="490" y="307" width="200" height="24" rx="4" fill="rgba(167,139,250,0.18)" stroke="#a78bfa" stroke-width="0.8"/>
+      <text x="590" y="323" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="9">L3 Knowledge (2)</text>
+      
+      <rect x="700" y="307" width="175" height="24" rx="4" fill="rgba(167,139,250,0.06)" stroke="#a78bfa" stroke-width="0.8" stroke-dasharray="3,3"/>
+      <text x="787" y="323" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="9" opacity="0.5">L4 Wisdom (0)</text>
+
+      <!-- Arrow down -->
+      <line x1="500" y1="345" x2="500" y2="365" stroke="#64748b" stroke-width="1" marker-end="url(#arrow)"/>
+
+      <!-- Layer 4: Governance -->
+      <rect x="50" y="370" width="900" height="85" rx="6" fill="rgba(6,78,59,0.3)" stroke="#34d399" stroke-width="1.5"/>
+      <rect x="50" y="370" width="900" height="85" rx="6" fill="#0f172a" opacity="0.6"/>
+      <text x="70" y="395" fill="#34d399" font-family="JetBrains Mono" font-size="11" font-weight="700">GOVERNANCE 引擎 — 知识进化 + 自适应调度</text>
+      <text x="70" y="412" fill="#94a3b8" font-family="JetBrains Mono" font-size="9">governance/engine.py · 511行</text>
+      
+      <rect x="70" y="422" width="165" height="24" rx="4" fill="rgba(52,211,153,0.08)" stroke="#34d399" stroke-width="0.8"/>
+      <text x="152" y="438" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono" font-size="9">DIKW 提升</text>
+      
+      <rect x="245" y="422" width="165" height="24" rx="4" fill="rgba(52,211,153,0.08)" stroke="#34d399" stroke-width="0.8"/>
+      <text x="327" y="438" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono" font-size="9">信息素衰减 ★</text>
+      
+      <rect x="420" y="422" width="165" height="24" rx="4" fill="rgba(52,211,153,0.08)" stroke="#34d399" stroke-width="0.8"/>
+      <text x="502" y="438" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono" font-size="9">策略蒸馏 ★</text>
+      
+      <rect x="595" y="422" width="165" height="24" rx="4" fill="rgba(52,211,153,0.08)" stroke="#34d399" stroke-width="0.8"/>
+      <text x="677" y="438" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono" font-size="9">Louvain 聚类</text>
+      
+      <rect x="770" y="422" width="105" height="24" rx="4" fill="rgba(52,211,153,0.08)" stroke="#34d399" stroke-width="0.8"/>
+      <text x="822" y="438" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono" font-size="9">本体推理</text>
+
+      <!-- Arrow down -->
+      <line x1="500" y1="460" x2="500" y2="480" stroke="#22d3ee" stroke-width="1" marker-end="url(#arrow-cyan)"/>
+
+      <!-- Layer 5: Capture -->
+      <rect x="50" y="485" width="900" height="75" rx="6" fill="rgba(8,51,68,0.3)" stroke="#22d3ee" stroke-width="1.5"/>
+      <rect x="50" y="485" width="900" height="75" rx="6" fill="#0f172a" opacity="0.6"/>
+      <text x="70" y="508" fill="#22d3ee" font-family="JetBrains Mono" font-size="11" font-weight="700">CAPTURE 层 — 6源统一捕获入口</text>
+      <text x="70" y="525" fill="#94a3b8" font-family="JetBrains Mono" font-size="9">capture.py · 677行 · signal_filter → classify → enrich → store</text>
+      
+      <text x="70" y="545" fill="#22d3ee" font-family="JetBrains Mono" font-size="8">
+        task_result  ·  user_correction  ·  discovery  ·  conversation  ·  tool_output  ·  article
+      </text>
+      <text x="70" y="556" fill="#64748b" font-family="JetBrains Mono" font-size="8">
+        → _auto_corroborate()  →  _maybe_request_spawn()  →  _estimate_tokens()
+      </text>
+    </svg>
+  </div>
+  <div style="text-align: center; color: var(--text-mute); font-size: 0.8rem; margin-top: 8px;">
+    ★ = 本次修复新增的功能
+  </div>
+</section>
+</div>
+
+<!-- ════ 3. Stigmergy 信号流 ════ -->
+<div class="container">
+<section>
+  <div class="section-tag">03 / STIGMERGY SIGNAL FLOW</div>
+  <div class="section-title">Agent 之间如何协调</div>
+  <div class="section-desc">Agent 从不直接调用其他 Agent。所有协调通过 SQLite 信号表中转。这是系统的核心设计。</div>
+
+  <div class="diagram-wrap">
+    <svg width="960" height="340" viewBox="0 0 960 340">
+      <defs>
+        <pattern id="grid2" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+        </pattern>
+        <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+        </marker>
+      </defs>
+      <rect width="960" height="340" fill="url(#grid2)"/>
+
+      <!-- Agent A (Scanner) -->
+      <rect x="30" y="50" width="160" height="70" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+      <rect x="30" y="50" width="160" height="70" rx="6" fill="#0f172a" opacity="0.5"/>
+      <text x="110" y="75" text-anchor="middle" fill="#22d3ee" font-family="JetBrains Mono" font-size="11" font-weight="700">Scanner Agent</text>
+      <text x="110" y="92" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">发现: 443端口开放</text>
+      <text x="110" y="105" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">→ capture()</text>
+
+      <!-- Arrow A → KB -->
+      <line x1="190" y1="85" x2="330" y2="85" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow2)"/>
+      <text x="260" y="78" text-anchor="middle" fill="#22d3ee" font-family="JetBrains Mono" font-size="8">① 写入知识</text>
+
+      <!-- KB (SQLite) -->
+      <rect x="330" y="30" width="300" height="280" rx="8" fill="rgba(76,29,149,0.15)" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="6,3"/>
+      <rect x="330" y="30" width="300" height="280" rx="8" fill="#0f172a" opacity="0.4"/>
+      <text x="480" y="55" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="12" font-weight="700">SQLite 知识库</text>
+      <text x="480" y="72" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">swarm_knowledge.db</text>
+      
+      <!-- KB internals -->
+      <rect x="350" y="90" width="260" height="28" rx="4" fill="rgba(167,139,250,0.08)" stroke="#a78bfa" stroke-width="0.8"/>
+      <text x="480" y="108" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="8">knowledge_entries + FTS5</text>
+      
+      <rect x="350" y="125" width="260" height="28" rx="4" fill="rgba(167,139,250,0.08)" stroke="#a78bfa" stroke-width="0.8"/>
+      <text x="480" y="143" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="8">knowledge_lineage (corroborating)</text>
+      
+      <rect x="350" y="160" width="260" height="28" rx="4" fill="rgba(251,146,60,0.1)" stroke="#fb923c" stroke-width="0.8"/>
+      <text x="480" y="178" text-anchor="middle" fill="#fb923c" font-family="JetBrains Mono" font-size="8">spawn_requests (信号总线)</text>
+      
+      <rect x="350" y="195" width="260" height="28" rx="4" fill="rgba(52,211,153,0.08)" stroke="#34d399" stroke-width="0.8"/>
+      <text x="480" y="213" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono" font-size="8">distilled_rules / swarm_strategies</text>
+      
+      <rect x="350" y="230" width="260" height="28" rx="4" fill="rgba(167,139,250,0.08)" stroke="#a78bfa" stroke-width="0.8"/>
+      <text x="480" y="248" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="8">ontology_concepts (47) + relations</text>
+      
+      <rect x="350" y="265" width="260" height="28" rx="4" fill="rgba(167,139,250,0.08)" stroke="#a78bfa" stroke-width="0.8"/>
+      <text x="480" y="283" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="8">agent_heartbeats + agent_profiles</text>
+
+      <!-- KB → Orchestrator -->
+      <line x1="630" y1="170" x2="770" y2="170" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrow2)"/>
+      <text x="700" y="163" text-anchor="middle" fill="#fb923c" font-family="JetBrains Mono" font-size="8">② 5s 轮询</text>
+
+      <!-- Orchestrator -->
+      <rect x="770" y="130" width="160" height="80" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+      <rect x="770" y="130" width="160" height="80" rx="6" fill="#0f172a" opacity="0.5"/>
+      <text x="850" y="155" text-anchor="middle" fill="#fbbf24" font-family="JetBrains Mono" font-size="11" font-weight="700">Orchestrator</text>
+      <text x="850" y="172" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">检测到 spawn 信号</text>
+      <text x="850" y="184" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">→ spawn_handler()</text>
+      <text x="850" y="196" text-anchor="middle" fill="#fbbf24" font-family="JetBrains Mono" font-size="8" font-weight="700">+ 上下文注入</text>
+
+      <!-- Orchestrator → Agent B -->
+      <path d="M 850 210 Q 850 280 600 280 L 250 280 Q 110 280 110 250" fill="none" stroke="#34d399" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow2)"/>
+      <text x="480" y="305" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono" font-size="8">③ spawn 新 Agent (带 KB 上下文)</text>
+
+      <!-- Agent B (Exploiter) -->
+      <rect x="30" y="160" width="160" height="70" rx="6" fill="rgba(136,19,55,0.3)" stroke="#fb7185" stroke-width="1.5"/>
+      <rect x="30" y="160" width="160" height="70" rx="6" fill="#0f172a" opacity="0.5"/>
+      <text x="110" y="185" text-anchor="middle" fill="#fb7185" font-family="JetBrains Mono" font-size="11" font-weight="700">Exploiter Agent</text>
+      <text x="110" y="202" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">接收: 漏洞上下文</text>
+      <text x="110" y="215" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">+ 策略规则</text>
+
+      <!-- Notes -->
+      <text x="480" y="330" text-anchor="middle" fill="#64748b" font-family="JetBrains Mono" font-size="8">
+        Agent A 从不直接调用 Agent B — 协调完全通过 SQLite 表中转
+      </text>
+    </svg>
+  </div>
+</section>
+</div>
+
+<!-- ════ 4. 核心机制 ════ -->
+<div class="container">
+<section>
+  <div class="section-tag">04 / KEY MECHANISMS</div>
+  <div class="section-title">九大核心机制</div>
+  <div class="section-desc">每个机制都映射到成熟的算法/理论，不是从零发明。</div>
+
+  <div class="card-grid">
+    <!-- 1. Stigmergy -->
+    <div class="card" style="border-top: 3px solid var(--orange);">
+      <div class="card-label" style="color: var(--orange);">01 — 生物学</div>
+      <h3>Stigmergy 间接协调</h3>
+      <p>
+        Agent 不直接通信，通过 SQLite 信号表留下"痕迹"（spawn_requests），其他 agent 轮询响应。
+        来自 Grassé (1959) 的白蚁筑巢理论。异步、可恢复、无单点。
+      </p>
+      <pre style="margin-top:12px; font-size: 0.75rem;"><span class="cmt"># Agent 端</span>
+request_spawn(db, run_id,
+  requested_role=<span class="str">"exploiter"</span>,
+  chain_depth=<span class="kw">1</span>)
+
+<span class="cmt"># Orchestrator 端 (5s轮询)</span>
+pending = poll_spawn_requests(db)</pre>
+    </div>
+
+    <!-- 2. DIKW -->
+    <div class="card" style="border-top: 3px solid var(--violet);">
+      <div class="card-label" style="color: var(--violet);">02 — 知识工程</div>
+      <h3>DIKW 金字塔提升</h3>
+      <p>
+        知识自动从 L1(Data) → L2(Info) → L3(Knowledge) → L4(Wisdom) 提升。
+        提升条件：corroborating sources 数 + trust_vector 置信度。
+        <span class="badge badge-ok">已验证</span> L1→L2 提升工作
+      </p>
+      <table style="margin-top: 8px;">
+        <tr><th>提升</th><th>corroborating</th><th>trust</th></tr>
+        <tr><td>L1→L2</td><td>≥1</td><td>≥0.60</td></tr>
+        <tr><td>L2→L3</td><td>≥2</td><td>≥0.75</td></tr>
+        <tr><td>L3→L4</td><td>≥3</td><td>≥0.85</td></tr>
+      </table>
+    </div>
+
+    <!-- 3. Pheromone -->
+    <div class="card" style="border-top: 3px solid var(--emerald);">
+      <div class="card-label" style="color: var(--emerald);">03 — ACOFuzz</div>
+      <h3>信息素蒸发</h3>
+      <p>
+        每条知识有 pheromone (0.0~1.0)。长时间未验证 → 指数衰减 (×0.95^intervals)。
+        低于 0.1 → 标记 stale，让 agent 去别处探索。验证时 boost 回 1.0。
+        <span class="badge badge-ok">新增</span> 解决了"死知识"堆积问题
+      </p>
+      <pre style="margin-top:12px; font-size: 0.75rem;"><span class="cmt"># 衰减公式</span>
+intervals = hours_elapsed / <span class="kw">6</span>
+new_phero = old_phero * (<span class="kw">0.95</span> ** intervals)
+
+<span class="cmt"># 验证时重置</span>
+boost_pheromone(db, entry_id, <span class="kw">0.3</span>)</pre>
+    </div>
+
+    <!-- 4. Power Schedule -->
+    <div class="card" style="border-top: 3px solid var(--amber);">
+      <div class="card-label" style="color: var(--amber);">04 — AFLFast</div>
+      <h3>Power Schedule 预算调度</h3>
+      <p>
+        借鉴 AFLFast 的能量调度：根据预算消耗和漏洞密度动态切换策略。
+        <span class="badge badge-ok">新增</span> Orchestrator 从 janitor 变成 planner
+      </p>
+      <table style="margin-top: 8px;">
+        <tr><th>条件</th><th>策略</th></tr>
+        <tr><td>预算 &lt;30%</td><td>breadth (广撒网)</td></tr>
+        <tr><td>预算 30-70%</td><td>balanced</td></tr>
+        <tr><td>预算 &gt;70%</td><td>depth (深挖)</td></tr>
+        <tr><td>漏洞密度 &gt;15%</td><td>强制 depth</td></tr>
+        <tr><td>chain &gt; max</td><td>拒绝 spawn</td></tr>
+      </table>
+    </div>
+
+    <!-- 5. Auto-corroborate -->
+    <div class="card" style="border-top: 3px solid var(--cyan);">
+      <div class="card-label" style="color: var(--cyan);">05 — 交叉验证</div>
+      <h3>自动 Corroborating</h3>
+      <p>
+        新知识入库时，自动为同 domain + 共享 tag 的已有条目建立 corroborating lineage。
+        不同 agent 用不同措辞描述同一现象也能触发提升。
+        <span class="badge badge-ok">新增</span> 解决了 DIKW 提升瓶颈
+      </p>
+      <pre style="margin-top:12px; font-size: 0.75rem;"><span class="cmt"># capture.py 第 8.7 步</span>
+_auto_corroborate(db, entry_id, classification)
+<span class="cmt"># → INSERT INTO knowledge_lineage</span>
+<span class="cmt">#   source_type='cross_agent_validation'</span>
+<span class="cmt">#   confidence_contribution=0.6</span></pre>
+    </div>
+
+    <!-- 6. Strategy Distillation -->
+    <div class="card" style="border-top: 3px solid var(--slate);">
+      <div class="card-label" style="color: var(--slate);">06 — 经验蒸馏</div>
+      <h3>策略自动蒸馏</h3>
+      <p>
+        分析 agent_tasks 历史成功率，将高成功率的 (task_type, tool) 模式提取为可复用策略。
+        已蒸馏 1 条策略。
+        <span class="badge badge-ok">新增</span> 策略表不再空转
+      </p>
+      <pre style="margin-top:12px; font-size: 0.75rem;"><span class="cmt"># 从 5 个成功 nmap scan 提取</span>
+auto:scan:nmap
+  success_rate: <span class="kw">1.00</span>
+  samples: <span class="kw">5</span>
+  → swarm_strategies</pre>
+    </div>
+
+    <!-- 7. Spawn Handler -->
+    <div class="card" style="border-top: 3px solid var(--amber);">
+      <div class="card-label" style="color: var(--amber);">07 — Agent 实例化</div>
+      <h3>Spawn Handler 桥接</h3>
+      <p>
+        信号总线检测到 spawn_requests 后，spawn_handler 将信号转化为实际 Agent。
+        Mock 模式用于测试，Hermes 模式对接 delegate_task，自动注入 role-specific goal + KB 上下文。
+        <span class="badge badge-ok">新增</span>
+      </p>
+      <pre style="margin-top:12px; font-size: 0.75rem;"><span class="cmt"># Orchestrator 集成</span>
+handler = MockSpawnHandler(db)
+orch.set_spawn_handler(handler)
+<span class="cmt"># 5s tick → poll → handler → agent</span>
+<span class="cmt"># + 自动注册 lifecycle</span></pre>
+    </div>
+
+    <!-- 8. Verification Pipeline -->
+    <div class="card" style="border-top: 3px solid var(--rose);">
+      <div class="card-label" style="color: var(--rose);">08 — 独立验证</div>
+      <h3>验证 Pipeline (Unwritable Verifier)</h3>
+      <p>
+        vulnerability 类型自动入验证队列。三重检查: 交叉验证(lineage≥2源) + 反例计数 + 可验证特征(IP/CVE/URL/工具输出)。
+        confirmed → boost pheromone, refuted → trust 下降 + counter_example。
+        <span class="badge badge-ok">新增</span>
+      </p>
+      <pre style="margin-top:12px; font-size: 0.75rem;"><span class="cmt"># Orchestrator 60s tick</span>
+auto_enqueue_validations(db)
+process_validation_queue(db)
+<span class="cmt"># score ≥ 3 → confirmed</span>
+<span class="cmt"># score &lt; 0 → refuted</span></pre>
+    </div>
+
+    <!-- 9. TF-IDF + Ontology Discovery -->
+    <div class="card" style="border-top: 3px solid var(--violet);">
+      <div class="card-label" style="color: var(--violet);">09 — 语义聚类 + 本体发现</div>
+      <h3>TF-IDF 聚类 + 关系发现</h3>
+      <p>
+        TF-IDF 余弦相似度替代纯 tag Jaccard: 28 条知识 → 575 词表 → 93 链接 (vs tag 11 链接)。
+        本体关系从 tag 共现自动推断: tool+technique→implements 等 7 种规则。
+        <span class="badge badge-ok">新增</span>
+      </p>
+      <pre style="margin-top:12px; font-size: 0.75rem;"><span class="cmt"># TF-IDF: 纯Python, 无外部依赖</span>
+tfidf = TF(词频) × IDF(逆文档频率)
+sim = cosine(vec_a, vec_b)
+<span class="cmt"># 共现 ≥ 2 → 推断关系</span>
+nmap --implements--> port_scan</pre>
+    </div>
+  </div>
+</section>
+</div>
+
+<!-- ════ 5. 数据流 ════ -->
+<div class="container">
+<section>
+  <div class="section-tag">05 / DATA FLOW</div>
+  <div class="section-title">Capture 全链路</div>
+  <div class="section-desc">从 Agent 发现到知识入库到触发新 Agent，一条完整的数据流。</div>
+
+  <pre><span class="cmt"># ── Agent 发现漏洞 ──</span>
+Agent 执行任务 → 发现 nmap 扫描结果
+    ↓
+<span class="cmt"># ── capture.py 统一入口 ──</span>
+capture(db, ctx)
+    ↓
+<span class="kw">Step 1</span>: signal_filter  →  is_worth_capturing()  →  60字符+分级阈值过滤
+    ↓
+<span class="kw">Step 2</span>: classify       →  DIKW分级 + 领域 + 标签 + 意图 + 置信度
+    ↓
+<span class="kw">Step 3</span>: dedup         →  content_hash 精确匹配  →  重复 = cross_validation
+    ↓
+<span class="kw">Step 4</span>: enrich         →  关联已有知识 + 冲突检测 (FTS5 sanitized)
+    ↓
+<span class="kw">Step 5</span>: store          →  INSERT knowledge_entries + FTS5索引 + lineage
+    ↓
+<span class="kw">Step 6</span>: auto_corroborate →  同 domain+tag → INSERT corroborating lineage
+    ↓
+<span class="kw">Step 7</span>: maybe_spawn    →  vulnerability+attack → request_spawn("exploiter")
+    ↓                                   chain_depth 从父 spawn 继承
+<span class="kw">Step 8</span>: estimate_tokens →  CJK/ASCII 分别估算 → UPDATE agent_tasks.token_cost
+    ↓
+<span class="kw">Step 9</span>: commit         →  knowledge + lineage + spawn_request 原子写入
+    ↓
+<span class="cmt"># ── Orchestrator 接力 ──</span>
+5s tick  →  poll spawn_requests → spawn_handler → 新 Agent 获得 KB 上下文注入
+15s tick →  power_schedule      → 预算策略切换 + 链深控制 + 负载均衡
+60s tick →  governance          → DIKW提升 + 信息素衰减 + 策略蒸馏 + 验证 + Wisdom蒸馏 + 本体发现</pre>
+</section>
+</div>
+
+<!-- ════ 5.5 核心算法示意图 ════ -->
+<div class="container">
+<section>
+  <div class="section-tag">05.5 / CORE ALGORITHMS</div>
+  <div class="section-title">核心算法流程图</div>
+  <div class="section-desc">三个关键算法的内部工作流程：DIKW 提升管线、信息素蒸发循环、独立验证三重检查。</div>
+
+  <!-- Algorithm 1: DIKW Pipeline -->
+  <h3 style="margin-bottom: 16px; font-size: 1.15rem; color: var(--violet);">算法 1: DIKW 提升管线</h3>
+  <div class="diagram-wrap">
+    <svg width="960" height="400" viewBox="0 0 960 400">
+      <defs>
+        <pattern id="grid3" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+        </pattern>
+        <marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#a78bfa"/>
+        </marker>
+      </defs>
+      <rect width="960" height="400" fill="url(#grid3)"/>
+
+      <!-- L1 → L2 -->
+      <rect x="20" y="30" width="220" height="60" rx="6" fill="rgba(167,139,250,0.15)" stroke="#a78bfa" stroke-width="1.5"/>
+      <rect x="20" y="30" width="220" height="60" rx="6" fill="#0f172a" opacity="0.5"/>
+      <text x="130" y="52" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="11" font-weight="700">L1 Data</text>
+      <text x="130" y="70" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">capture() 入库 · 28条</text>
+
+      <line x1="240" y1="60" x2="280" y2="60" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr3)"/>
+      <text x="260" y="52" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="8">≥1 corrob</text>
+      <text x="260" y="62" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="8">≥0.60 trust</text>
+
+      <!-- Promotion check -->
+      <polygon points="340,30 400,60 340,90 280,60" fill="rgba(167,139,250,0.1)" stroke="#a78bfa" stroke-width="1"/>
+      <text x="340" y="55" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="8" font-weight="700">提升?</text>
+      <text x="340" y="68" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="7">run_promotion</text>
+      <text x="340" y="78" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="7">_cycle()</text>
+
+      <line x1="400" y1="60" x2="440" y2="60" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr3)"/>
+
+      <!-- L2 -->
+      <rect x="440" y="30" width="180" height="60" rx="6" fill="rgba(167,139,250,0.2)" stroke="#a78bfa" stroke-width="1.5"/>
+      <rect x="440" y="30" width="180" height="60" rx="6" fill="#0f172a" opacity="0.5"/>
+      <text x="530" y="52" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="11" font-weight="700">L2 Info</text>
+      <text x="530" y="70" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">7条 · _auto_corroborate</text>
+
+      <line x1="620" y1="60" x2="660" y2="60" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr3)"/>
+      <text x="640" y="52" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="8">≥2 corrob</text>
+      <text x="640" y="62" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="8">≥0.75 trust</text>
+
+      <!-- L3 -->
+      <rect x="660" y="30" width="130" height="60" rx="6" fill="rgba(167,139,250,0.25)" stroke="#a78bfa" stroke-width="1.5"/>
+      <rect x="660" y="30" width="130" height="60" rx="6" fill="#0f172a" opacity="0.5"/>
+      <text x="725" y="52" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="11" font-weight="700">L3 Knowledge</text>
+      <text x="725" y="70" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">1条</text>
+
+      <line x1="790" y1="60" x2="830" y2="60" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr3)"/>
+      <text x="810" y="52" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="8">≥3 corrob</text>
+      <text x="810" y="62" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="8">≥0.85 trust</text>
+
+      <!-- L4 -->
+      <rect x="830" y="30" width="120" height="60" rx="6" fill="rgba(167,139,250,0.3)" stroke="#a78bfa" stroke-width="1.5"/>
+      <rect x="830" y="30" width="120" height="60" rx="6" fill="#0f172a" opacity="0.5"/>
+      <text x="890" y="52" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="11" font-weight="700">L4 Wisdom</text>
+      <text x="890" y="70" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">1条</text>
+
+      <!-- Wisdom → distilled_rules -->
+      <line x1="890" y1="90" x2="890" y2="130" stroke="#34d399" stroke-width="1.5" marker-end="url(#arr3)"/>
+      <text x="920" y="115" fill="#34d399" font-family="JetBrains Mono" font-size="8">distill_wisdom()</text>
+
+      <rect x="780" y="130" width="220" height="50" rx="6" fill="rgba(52,211,153,0.12)" stroke="#34d399" stroke-width="1.5"/>
+      <rect x="780" y="130" width="220" height="50" rx="6" fill="#0f172a" opacity="0.5"/>
+      <text x="890" y="150" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono" font-size="10" font-weight="700">distilled_rules</text>
+      <text x="890" y="165" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">1条 wisdom 规则 · 优先级=75</text>
+
+      <!-- Corroborating sources -->
+      <rect x="20" y="130" width="440" height="90" rx="6" fill="rgba(34,211,238,0.08)" stroke="#22d3ee" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="240" y="152" text-anchor="middle" fill="#22d3ee" font-family="JetBrains Mono" font-size="10" font-weight="700">Corroborating 来源 (knowledge_lineage)</text>
+      <text x="40" y="172" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">① content_hash 去重 → cross_agent_validation</text>
+      <text x="40" y="188" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">② _auto_corroborate: 同 domain+tag → pattern_matching</text>
+      <text x="40" y="204" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">③ 验证 pipeline: confirmed → +0.05 trust</text>
+
+      <!-- trust_vector -->
+      <rect x="20" y="240" width="440" height="70" rx="6" fill="rgba(251,191,36,0.08)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="240" y="260" text-anchor="middle" fill="#fbbf24" font-family="JetBrains Mono" font-size="10" font-weight="700">trust_vector = 0.4×base + 0.3×logic + 0.3×cross</text>
+      <text x="40" y="280" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">base_confidence: 来源决定 (user_correction=0.90, conversation=0.40)</text>
+      <text x="40" y="296" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">logic_soundness: 推理质量 (初始 0.7)</text>
+      <text x="40" y="306" fill="#64748b" font-family="JetBrains Mono" font-size="7">→ 综合 trust ≥ 阈值 + corroborating ≥ N → 自动提升</text>
+
+      <!-- Counter examples -->
+      <rect x="480" y="240" width="460" height="70" rx="6" fill="rgba(251,113,133,0.08)" stroke="#fb7185" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="710" y="260" text-anchor="middle" fill="#fb7185" font-family="JetBrains Mono" font-size="10" font-weight="700">反例驱动衰减 (check_and_decay)</text>
+      <text x="500" y="280" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">counter_examples ≥ 5 → knowledge 标记 stale</text>
+      <text x="500" y="296" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">counter_examples ≥ 5 → distilled_rule 停用</text>
+      <text x="500" y="306" fill="#64748b" font-family="JetBrains Mono" font-size="7">→ 反例来自: 用户纠正 / 验证 pipeline refuted / 交叉验证 refute</text>
+
+      <!-- Bottom: DIKW promotion cycle -->
+      <rect x="20" y="330" width="920" height="55" rx="6" fill="rgba(167,139,250,0.05)" stroke="#a78bfa" stroke-width="0.8"/>
+      <text x="480" y="352" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="9" font-weight="700">Orchestrator 60s governance tick</text>
+      <text x="480" y="368" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">run_promotion_cycle → check_and_decay → run_pheromone_decay → auto_distill_strategies → auto_enqueue → process_validation → distill_wisdom → discover_relations</text>
+      <text x="480" y="378" text-anchor="middle" fill="#64748b" font-family="JetBrains Mono" font-size="7">8 个子步骤, 全自动, 无人工干预</text>
+    </svg>
+  </div>
+
+  <!-- Algorithm 2: Pheromone Cycle -->
+  <h3 style="margin-top: 32px; margin-bottom: 16px; font-size: 1.15rem; color: var(--emerald);">算法 2: 信息素蒸发循环 (ACOFuzz)</h3>
+  <div class="diagram-wrap">
+    <svg width="960" height="280" viewBox="0 0 960 280">
+      <defs>
+        <pattern id="grid4" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+        </pattern>
+        <marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#34d399"/>
+        </marker>
+      </defs>
+      <rect width="960" height="280" fill="url(#grid4)"/>
+
+      <!-- Circular layout -->
+      <!-- Center -->
+      <circle cx="480" cy="140" r="50" fill="rgba(52,211,153,0.1)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="480" y="135" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono" font-size="10" font-weight="700">知识条目</text>
+      <text x="480" y="150" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">pheromone</text>
+
+      <!-- Top: capture -->
+      <rect x="400" y="20" width="160" height="44" rx="6" fill="rgba(34,211,238,0.15)" stroke="#22d3ee" stroke-width="1"/>
+      <text x="480" y="40" text-anchor="middle" fill="#22d3ee" font-family="JetBrains Mono" font-size="9" font-weight="700">capture()</text>
+      <text x="480" y="54" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">pheromone = 1.0</text>
+
+      <line x1="480" y1="64" x2="480" y2="84" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arr4)"/>
+
+      <!-- Right: decay -->
+      <rect x="680" y="100" width="200" height="60" rx="6" fill="rgba(251,191,36,0.1)" stroke="#fbbf24" stroke-width="1"/>
+      <text x="780" y="120" text-anchor="middle" fill="#fbbf24" font-family="JetBrains Mono" font-size="9" font-weight="700">信息素蒸发</text>
+      <text x="780" y="135" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">每6h: phero *= 0.95^intervals</text>
+      <text x="780" y="148" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">run_pheromone_decay()</text>
+
+      <line x1="530" y1="140" x2="670" y2="130" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arr4)"/>
+
+      <!-- Bottom: stale -->
+      <rect x="400" y="210" width="160" height="50" rx="6" fill="rgba(251,113,133,0.1)" stroke="#fb7185" stroke-width="1"/>
+      <text x="480" y="230" text-anchor="middle" fill="#fb7185" font-family="JetBrains Mono" font-size="9" font-weight="700">phero &lt; 0.1</text>
+      <text x="480" y="244" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">→ status = stale</text>
+
+      <line x1="480" y1="190" x2="480" y2="205" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arr4)"/>
+
+      <!-- Left: boost -->
+      <rect x="140" y="100" width="200" height="60" rx="6" fill="rgba(52,211,153,0.1)" stroke="#34d399" stroke-width="1"/>
+      <text x="240" y="120" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono" font-size="9" font-weight="700">验证 / 确认</text>
+      <text x="240" y="135" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">boost_pheromone(+0.3)</text>
+      <text x="240" y="148" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">→ 重置为 1.0</text>
+
+      <line x1="340" y1="130" x2="425" y2="140" stroke="#34d399" stroke-width="1.5" marker-end="url(#arr4)"/>
+
+      <!-- Arrows from center to bottom -->
+      <line x1="480" y1="190" x2="480" y2="205" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arr4)"/>
+
+      <!-- Annotations -->
+      <text x="600" y="100" fill="#fbbf24" font-family="JetBrains Mono" font-size="7">时间流逝</text>
+      <text x="360" y="100" fill="#34d399" font-family="JetBrains Mono" font-size="7">交叉验证</text>
+      <text x="520" y="200" fill="#fb7185" font-family="JetBrains Mono" font-size="7">无人验证</text>
+      <text x="520" y="80" fill="#22d3ee" font-family="JetBrains Mono" font-size="7">新发现</text>
+    </svg>
+  </div>
+
+  <!-- Algorithm 3: Verification Triple Check -->
+  <h3 style="margin-top: 32px; margin-bottom: 16px; font-size: 1.15rem; color: var(--rose);">算法 3: 独立验证三重检查</h3>
+  <div class="diagram-wrap">
+    <svg width="960" height="340" viewBox="0 0 960 340">
+      <defs>
+        <pattern id="grid5" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+        </pattern>
+        <marker id="arr5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#fb7185"/>
+        </marker>
+        <marker id="arr5g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#34d399"/>
+        </marker>
+      </defs>
+      <rect width="960" height="340" fill="url(#grid5)"/>
+
+      <!-- Input -->
+      <rect x="20" y="20" width="200" height="50" rx="6" fill="rgba(251,113,133,0.1)" stroke="#fb7185" stroke-width="1.5"/>
+      <text x="120" y="42" text-anchor="middle" fill="#fb7185" font-family="JetBrains Mono" font-size="10" font-weight="700">auto_enqueue</text>
+      <text x="120" y="56" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">vulnerability + trust≥0.65</text>
+
+      <line x1="220" y1="45" x2="280" y2="45" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arr5)"/>
+
+      <!-- Validation Queue -->
+      <rect x="280" y="20" width="160" height="50" rx="6" fill="rgba(251,191,36,0.1)" stroke="#fbbf24" stroke-width="1"/>
+      <text x="360" y="42" text-anchor="middle" fill="#fbbf24" font-family="JetBrains Mono" font-size="9" font-weight="700">validation_queue</text>
+      <text x="360" y="56" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">pending → assigned</text>
+
+      <line x1="440" y1="45" x2="500" y2="45" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arr5)"/>
+
+      <!-- Triple Check -->
+      <rect x="500" y="10" width="440" height="280" rx="8" fill="rgba(251,113,133,0.05)" stroke="#fb7185" stroke-width="1" stroke-dasharray="6,3"/>
+      <text x="720" y="30" text-anchor="middle" fill="#fb7185" font-family="JetBrains Mono" font-size="10" font-weight="700">_auto_verify() 三重检查</text>
+
+      <!-- Check 1 -->
+      <rect x="520" y="50" width="400" height="55" rx="6" fill="rgba(52,211,153,0.08)" stroke="#34d399" stroke-width="1"/>
+      <text x="540" y="70" fill="#34d399" font-family="JetBrains Mono" font-size="9" font-weight="700">① 交叉验证</text>
+      <text x="540" y="84" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">lineage 中独立 source_type 数</text>
+      <text x="540" y="96" fill="#64748b" font-family="JetBrains Mono" font-size="7">≥2 源 → +2分 · 1 源 → +1分 · 0 源 → 0分</text>
+
+      <!-- Check 2 -->
+      <rect x="520" y="120" width="400" height="55" rx="6" fill="rgba(251,113,133,0.08)" stroke="#fb7185" stroke-width="1"/>
+      <text x="540" y="140" fill="#fb7185" font-family="JetBrains Mono" font-size="9" font-weight="700">② 反例计数</text>
+      <text x="540" y="154" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">counter_examples 表中数量</text>
+      <text x="540" y="166" fill="#64748b" font-family="JetBrains Mono" font-size="7">≥3 → -3分 · &gt;0 → -1分 · 0 → 0分</text>
+
+      <!-- Check 3 -->
+      <rect x="520" y="190" width="400" height="55" rx="6" fill="rgba(34,211,238,0.08)" stroke="#22d3ee" stroke-width="1"/>
+      <text x="540" y="210" fill="#22d3ee" font-family="JetBrains Mono" font-size="9" font-weight="700">③ 可验证特征</text>
+      <text x="540" y="224" fill="#94a3b8" font-family="JetBrains Mono" font-size="8">IP地址(+1) · CVE编号(+2) · URL(+1) · 工具输出(+1)</text>
+      <text x="540" y="236" fill="#64748b" font-family="JetBrains Mono" font-size="7">→ 可重放证据 = 更高置信度</text>
+
+      <!-- Score & Verdict -->
+      <rect x="520" y="260" width="400" height="25" rx="4" fill="rgba(167,139,250,0.1)" stroke="#a78bfa" stroke-width="1"/>
+      <text x="720" y="277" text-anchor="middle" fill="#a78bfa" font-family="JetBrains Mono" font-size="9" font-weight="700">score ≥ 3 → confirmed · score &lt; 0 → refuted · else → inconclusive</text>
+
+      <!-- Outcomes -->
+      <line x1="720" y1="290" x2="200" y2="290" stroke="#64748b" stroke-width="0.8" stroke-dasharray="3,3"/>
+
+      <rect x="20" y="290" width="200" height="40" rx="6" fill="rgba(52,211,153,0.1)" stroke="#34d399" stroke-width="1"/>
+      <text x="120" y="306" text-anchor="middle" fill="#34d399" font-family="JetBrains Mono" font-size="8" font-weight="700">confirmed</text>
+      <text x="120" y="320" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="7">boost_pheromone + trust+0.05</text>
+
+      <rect x="240" y="290" width="200" height="40" rx="6" fill="rgba(251,113,133,0.1)" stroke="#fb7185" stroke-width="1"/>
+      <text x="340" y="306" text-anchor="middle" fill="#fb7185" font-family="JetBrains Mono" font-size="8" font-weight="700">refuted</text>
+      <text x="340" y="320" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="7">trust-0.20 + counter_example</text>
+
+      <rect x="460" y="290" width="200" height="40" rx="6" fill="rgba(251,191,36,0.1)" stroke="#fbbf24" stroke-width="1"/>
+      <text x="560" y="306" text-anchor="middle" fill="#fbbf24" font-family="JetBrains Mono" font-size="8" font-weight="700">inconclusive</text>
+      <text x="560" y="320" text-anchor="middle" fill="#94a3b8" font-family="JetBrains Mono" font-size="7">不修改, 等待更多验证</text>
+    </svg>
+  </div>
+</section>
+</div>
+
+<!-- ════ 6. 当前数据 ════ -->
+<div class="container">
+<section>
+  <div class="section-tag">06 / CURRENT STATE</div>
+  <div class="section-title">系统当前数据</div>
+  <div class="section-desc">经过 Bug bounty 实验积累的真实数据。</div>
+
+  <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+    <div class="card" style="text-align: center;">
+      <div class="card-label" style="color: var(--violet);">知识条目</div>
+      <div class="card-value" style="color: var(--violet);">37</div>
+      <p>L1:28 · L2:7 · L3:1 · L4:1</p>
+    </div>
+    <div class="card" style="text-align: center;">
+      <div class="card-label" style="color: var(--emerald);">Lineage</div>
+      <div class="card-value" style="color: var(--emerald);">35+</div>
+      <p>含 corroborating 关联</p>
+    </div>
+    <div class="card" style="text-align: center;">
+      <div class="card-label" style="color: var(--amber);">本体概念</div>
+      <div class="card-value" style="color: var(--amber);">47</div>
+      <p>tool:15 · technique:14</p>
+    </div>
+    <div class="card" style="text-align: center;">
+      <div class="card-label" style="color: var(--cyan);">蒸馏策略</div>
+      <div class="card-value" style="color: var(--cyan);">1</div>
+      <p>auto:scan:nmap (100%)</p>
+    </div>
+    <div class="card" style="text-align: center;">
+      <div class="card-label" style="color: var(--rose);">平均 pheromone</div>
+      <div class="card-value" style="color: var(--rose);">0.90</div>
+      <p>min:0.00 · max:1.00</p>
+    </div>
+    <div class="card" style="text-align: center;">
+      <div class="card-label" style="color: var(--orange);">Wisdom 规则</div>
+      <div class="card-value" style="color: var(--orange);">1</div>
+      <p>distill_wisdom 蒸馏</p>
+    </div>
+  </div>
+
+  <h3 style="margin-top: 32px; margin-bottom: 16px; font-size: 1.1rem;">知识类型分布</h3>
+  <table>
+    <tr><th>类型</th><th>数量</th><th>说明</th></tr>
+    <tr><td>tool_usage</td><td>16</td><td>工具执行结果（nmap/nuclei/jadx 等）</td></tr>
+    <tr><td>vulnerability</td><td>10</td><td>确认的漏洞发现 (验证 pipeline 目标)</td></tr>
+    <tr><td>observation</td><td>7</td><td>观察发现（端口/端点/配置）</td></tr>
+    <tr><td>technique</td><td>2</td><td>攻击技术描述</td></tr>
+    <tr><td>mechanism</td><td>1</td><td>底层机制分析</td></tr>
+    <tr><td>fact</td><td>1</td><td>已确认的事实</td></tr>
+  </table>
+
+  <h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 1.1rem;">知识领域分布</h3>
+  <table>
+    <tr><th>领域</th><th>数量</th></tr>
+    <tr><td>general</td><td>13</td></tr>
+    <tr><td>web</td><td>11</td></tr>
+    <tr><td>security</td><td>10</td></tr>
+    <tr><td>network</td><td>2</td></tr>
+    <tr><td>mobile</td><td>1</td></tr>
+  </table>
+</section>
+</div>
+
+<!-- ════ 7. 代码结构 ════ -->
+<div class="container">
+<section>
+  <div class="section-tag">07 / CODE STRUCTURE</div>
+  <div class="section-title">代码组织</div>
+  <div class="section-desc">4,808 行 Python，21 个文件，单 SQLite 文件存储。</div>
+
+  <table>
+    <tr><th>文件</th><th>行数</th><th>职责</th></tr>
+    <tr><td>src/agents/capture.py</td><td>677</td><td>捕获+去重+spawn触发+token+corroborate</td></tr>
+    <tr><td>src/governance/engine.py</td><td>511</td><td>提升+衰减+聚类+策略蒸馏</td></tr>
+    <tr><td>src/governance/verification.py</td><td>264</td><td>独立验证 pipeline (三重检查)</td></tr>
+    <tr><td>src/governance/wisdom.py</td><td>259</td><td>L4 Wisdom → distilled_rules 蒸馏</td></tr>
+    <tr><td>src/governance/tfidf_cluster.py</td><td>220</td><td>TF-IDF 语义聚类 (无外部依赖)</td></tr>
+    <tr><td>src/agents/extractor.py</td><td>470</td><td>分类器 (类型/领域/标签/level)</td></tr>
+    <tr><td>src/agents/retrieval.py</td><td>391</td><td>检索+注入+策略路由+FTS5 sanitize</td></tr>
+    <tr><td>src/swarm/orchestrator.py</td><td>420</td><td>4循环编排器+power schedule+负载均衡</td></tr>
+    <tr><td>src/swarm/spawn_handler.py</td><td>194</td><td>信号→Agent 桥接 (Mock/Hermes)</td></tr>
+    <tr><td>src/db.py</td><td>255</td><td>SQLite封装+migration幂等</td></tr>
+    <tr><td>src/ontology/inference.py</td><td>230</td><td>概念发现+传递推理+漂移检测</td></tr>
+    <tr><td>src/ontology/discovery.py</td><td>215</td><td>共现关系自动发现</td></tr>
+    <tr><td>src/swarm/spawner.py</td><td>212</td><td>信号总线+链深+去重合并</td></tr>
+    <tr><td>src/swarm/lifecycle.py</td><td>202</td><td>注册+心跳+超时清理+存活查询</td></tr>
+  </table>
+
+  <h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 1.1rem;">25 张 SQLite 表</h3>
+  <pre><span class="cmt"># Swarm Core</span>
+swarm_runs          · agent_profiles    · agent_tasks        · agent_delegations
+swarm_behaviors     · agent_heartbeats  · spawn_requests
+
+<span class="cmt"># Knowledge Core (DIKW)</span>
+knowledge_entries    · knowledge_entries_fts (FTS5)  · knowledge_lineage
+knowledge_promotions · distilled_rules    · counter_examples
+
+<span class="cmt"># Ontology</span>
+ontology_concepts    · ontology_relations · ontology_instances  · concept_versions
+
+<span class="cmt"># Strategy</span>
+swarm_strategies     · strategy_applications
+
+<span class="cmt"># Verification (新增)</span>
+validation_queue
+
+<span class="cmt"># FTS5 Internal</span>
+knowledge_entries_fts_config · knowledge_entries_fts_data · knowledge_entries_fts_docsize · knowledge_entries_fts_idx</pre>
+</section>
+</div>
+
+<!-- ════ 8. 实现状态 ════ -->
+<div class="container">
+<section>
+  <div class="section-tag">08 / IMPLEMENTATION STATUS</div>
+  <div class="section-title">已实现 vs 待实现</div>
+
+  <div class="card-grid">
+    <div class="card" style="border-left: 3px solid var(--emerald);">
+      <div class="card-label" style="color: var(--emerald);"><span class="badge badge-ok">已完成</span></div>
+      <h3>基础设施层</h3>
+      <p style="margin-bottom: 8px;">
+        ✓ Stigmergy 信号总线 (spawn_requests)<br>
+        ✓ Agent 生命周期 (注册/心跳/超时清理)<br>
+        ✓ 6源统一捕获 + 信号过滤<br>
+        ✓ DIKW 知识金字塔 + FTS5检索<br>
+        ✓ trust_vector 三维置信度<br>
+        ✓ content_hash 精确去重
+      </p>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--emerald);">
+      <div class="card-label" style="color: var(--emerald);"><span class="badge badge-ok">已完成</span></div>
+      <h3>治理层</h3>
+      <p style="margin-bottom: 8px;">
+        ✓ DIKW 自动提升 (corroborating+trust)<br>
+        ✓ 信息素蒸发 (ACOFuzz 时间衰减)<br>
+        ✓ 反例驱动衰减 (counter_examples)<br>
+        ✓ 策略自动蒸馏 (从task模式提取)<br>
+        ✓ Ontology 扩展聚类 (Louvain)<br>
+        ✓ 本体推理 (传递闭包/漂移检测)<br>
+        ✓ <strong>L4 Wisdom 蒸馏 (distill_wisdom)</strong><br>
+        ✓ <strong>TF-IDF 语义聚类 (无外部依赖)</strong><br>
+        ✓ <strong>Ontology 关系自动发现 (共现)</strong>
+      </p>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--emerald);">
+      <div class="card-label" style="color: var(--emerald);"><span class="badge badge-ok">已完成</span></div>
+      <h3>调度层</h3>
+      <p style="margin-bottom: 8px;">
+        ✓ Power schedule (breadth/depth切换)<br>
+        ✓ 链深度控制 (防无限追链)<br>
+        ✓ 负载均衡 (load_score 工作窃取)<br>
+        ✓ Token 追踪 (capture时估算)<br>
+        ✓ FTS5 查询 sanitize<br>
+        ✓ 自动 corroborating (domain+tag)<br>
+        ✓ <strong>独立验证 pipeline (三重检查)</strong><br>
+        ✓ <strong>spawn_handler (Mock+Hermes)</strong>
+      </p>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--cyan);">
+      <div class="card-label" style="color: var(--cyan);"><span class="badge badge-ok">全部实现</span></div>
+      <h3>未来方向</h3>
+      <p style="margin-bottom: 8px;">
+        ◇ 外部 embedding 模型集成<br>
+        ◇ 多模型 per-agent 配置<br>
+        ◇ 跨 session 持久化恢复<br>
+        ◇ Web UI 可视化仪表盘<br>
+        ◇ 分布式多机蜂群<br>
+        ◇ 实时 stream 处理
+      </p>
+    </div>
+  </div>
+</section>
+</div>
+
+<!-- ════ 9. 理论映射 ════ -->
+<div class="container">
+<section>
+  <div class="section-tag">09 / THEORY MAPPING</div>
+  <div class="section-title">不是从零发明 — 每个机制都有理论根基</div>
+  <div class="section-desc">系统的设计原则：在成熟领域已有的解决方案上加智能，而不是重新发明轮子。</div>
+
+  <table>
+    <tr><th>系统机制</th><th>理论来源</th><th>映射关系</th></tr>
+    <tr><td>Stigmergy 信号总线</td><td>Grassé (1959) 白蚁筑巢</td><td>Agent 通过环境痕迹间接协调</td></tr>
+    <tr><td>DIKW 金字塔</td><td>Zeleny (1987) 知识工程</td><td>Data→Info→Knowledge→Wisdom</td></tr>
+    <tr><td>信息素蒸发</td><td>ACOFuzz (2025) 蚁群优化</td><td>pheromone *= decay_rate^intervals</td></tr>
+    <tr><td>Power Schedule</td><td>AFLFast (Böhme CCS 2016)</td><td>预算分配 = 能量调度</td></tr>
+    <tr><td>策略蒸馏</td><td>AgentFlow (arXiv 2026)</td><td>从运行时反馈优化 harness</td></tr>
+    <tr><td>corroborating 提升</td><td>科学验证方法论</td><td>多源交叉验证 → 可信度提升</td></tr>
+    <tr><td>集中规划+并行执行</td><td>AWS Security Agent (2026)</td><td>协调集中，执行并行</td></tr>
+    <tr><td>Louvain 聚类</td><td>Blondel (2008) 社区检测</td><td>知识自动分组去重</td></tr>
+    <tr><td>TF-IDF 语义聚类</td><td>Salton (1988) 信息检索</td><td>词频×逆文档频率 → 余弦相似度</td></tr>
+    <tr><td>Wisdom 蒸馏</td><td>DIKW + 经验蒸馏</td><td>L4 知识 + 多源验证 → 可复用规则</td></tr>
+    <tr><td>独立验证 pipeline</td><td>Anthropic unwritable-verifier</td><td>验证者只能更新 confidence，不能创建发现</td></tr>
+    <tr><td>本体关系发现</td><td>共现分析 (Bourigault 1994)</td><td>tag 共现 ≥ 2 → 推断概念关系</td></tr>
+  </table>
+</section>
+</div>
+
+<!-- ════ Footer ════ -->
+<footer>
+  蜂群知识系统 v0.5.0 · SQLite 单文件 · 4,808 行 Python · 25 张表 · ~/workspace/research/swarm-knowledge/
+</footer>
+
+</body>
+</html>
