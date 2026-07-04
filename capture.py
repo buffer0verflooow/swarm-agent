@@ -14,7 +14,6 @@
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -30,6 +29,10 @@ def main():
     parser.add_argument("--source", default="task_result",
                         choices=["task_result", "user_correction", "error_resolution",
                                  "conversation", "tool_output", "article", "discovery"])
+    parser.add_argument("--run-id", default="", help="Associated swarm run_id")
+    parser.add_argument("--task-id", default="", help="Associated agent task_id")
+    parser.add_argument("--intent", default="", help="Knowledge intent override")
+    parser.add_argument("--title", default="", help="Entry title override")
     parser.add_argument("--phase", default="", help="Experiment phase")
     parser.add_argument("--tags", default="", help="Comma-separated tags")
     parser.add_argument("--db", default=str(REPO / "swarm_knowledge.db"), help="DB path")
@@ -46,30 +49,28 @@ def main():
     }
 
     db = SwarmDB(args.db)
+    if not db.fetch_one("SELECT name FROM sqlite_master WHERE type='table' AND name='knowledge_entries'"):
+        db.init()
+
     tags = [t.strip() for t in args.tags.split(",") if t.strip()]
 
     ctx = CaptureContext(
         source=source_map.get(args.source, CaptureSource.TASK_RESULT),
         content=args.content,
         source_agent=args.agent,
+        source_run_id=args.run_id or None,
+        source_task_id=args.task_id or None,
         metadata={
             "phase": args.phase,
             "tags": tags,
+            **({"intent": args.intent} if args.intent else {}),
+            **({"title": args.title} if args.title else {}),
             "captured_by": "capture.py",
         },
     )
 
-    # Override tags in classification
     entry_id = capture(db, ctx, auto_classify=True)
     if entry_id:
-        # Update tags if specified
-        if tags:
-            db.execute(
-                "UPDATE knowledge_entries SET tags = ? WHERE id = ?",
-                (json.dumps(tags), entry_id),
-            )
-            db.conn.commit()
-
         print(f"CAPTURED:{entry_id[:8]}")
     else:
         print("FILTERED:low_signal")

@@ -380,7 +380,7 @@ footer {
         task_result  ·  user_correction  ·  discovery  ·  conversation  ·  tool_output  ·  article
       </text>
       <text x="70" y="556" fill="#64748b" font-family="JetBrains Mono" font-size="8">
-        → _auto_corroborate()  →  _maybe_request_spawn()  →  _estimate_tokens()
+        → _auto_corroborate()  →  _emit_swarm_signals() / work_market  →  _estimate_tokens()
       </text>
     </svg>
   </div>
@@ -498,8 +498,8 @@ request_spawn(db, run_id,
   requested_role=<span class="str">"exploiter"</span>,
   chain_depth=<span class="kw">1</span>)
 
-<span class="cmt"># Orchestrator 端 (5s轮询)</span>
-pending = poll_spawn_requests(db)</pre>
+	<span class="cmt"># Orchestrator 端 (5s轮询)</span>
+	claimed = claim_spawn_requests(db)</pre>
     </div>
 
     <!-- 2. DIKW -->
@@ -662,14 +662,15 @@ capture(db, ctx)
     ↓
 <span class="kw">Step 6</span>: auto_corroborate →  同 domain+tag → INSERT corroborating lineage
     ↓
-<span class="kw">Step 7</span>: maybe_spawn    →  vulnerability+attack → request_spawn("exploiter")
-    ↓                                   chain_depth 从父 spawn 继承
+<span class="kw">Step 7</span>: emit_swarm_signals → 发现扇出为 analyze/exploit/report 多个市场任务
+    ↓                                      角色容量不足 → request_spawn(role)
 <span class="kw">Step 8</span>: estimate_tokens →  CJK/ASCII 分别估算 → UPDATE agent_tasks.token_cost
     ↓
-<span class="kw">Step 9</span>: commit         →  knowledge + lineage + spawn_request 原子写入
+<span class="kw">Step 9</span>: commit         →  knowledge + lineage + market_tasks + spawn_request 原子写入
     ↓
-<span class="cmt"># ── Orchestrator 接力 ──</span>
-5s tick  →  poll spawn_requests → spawn_handler → 新 Agent 获得 KB 上下文注入
+<span class="cmt"># ── Orchestrator 蜂群调度 ──</span>
+	2s tick  →  work_market: 恢复卡住任务 + 根据角色积压扩容
+	5s tick  →  claim spawn_requests → spawn_handler → 新 Agent 获得 KB 上下文并 claim work
 15s tick →  power_schedule      → 预算策略切换 + 链深控制 + 负载均衡
 60s tick →  governance          → DIKW提升 + 信息素衰减 + 策略蒸馏 + 验证 + Wisdom蒸馏 + 本体发现</pre>
 </section>
@@ -983,18 +984,23 @@ capture(db, ctx)
 <section>
   <div class="section-tag">07 / CODE STRUCTURE</div>
   <div class="section-title">代码组织</div>
-  <div class="section-desc">4,808 行 Python，21 个文件，单 SQLite 文件存储。</div>
+  <div class="section-desc">Python + SQLite 单文件存储，任务市场驱动的蜂群协作。</div>
 
   <table>
     <tr><th>文件</th><th>行数</th><th>职责</th></tr>
-    <tr><td>src/agents/capture.py</td><td>677</td><td>捕获+去重+spawn触发+token+corroborate</td></tr>
+    <tr><td>src/agents/capture.py</td><td>677</td><td>捕获+去重+任务市场扇出+token+corroborate</td></tr>
     <tr><td>src/governance/engine.py</td><td>511</td><td>提升+衰减+聚类+策略蒸馏</td></tr>
     <tr><td>src/governance/verification.py</td><td>264</td><td>独立验证 pipeline (三重检查)</td></tr>
     <tr><td>src/governance/wisdom.py</td><td>259</td><td>L4 Wisdom → distilled_rules 蒸馏</td></tr>
     <tr><td>src/governance/tfidf_cluster.py</td><td>220</td><td>TF-IDF 语义聚类 (无外部依赖)</td></tr>
     <tr><td>src/agents/extractor.py</td><td>470</td><td>分类器 (类型/领域/标签/level)</td></tr>
     <tr><td>src/agents/retrieval.py</td><td>391</td><td>检索+注入+策略路由+FTS5 sanitize</td></tr>
-    <tr><td>src/swarm/orchestrator.py</td><td>420</td><td>4循环编排器+power schedule+负载均衡</td></tr>
+    <tr><td>src/swarm/orchestrator.py</td><td>420</td><td>任务市场维护+spawn扩容+power schedule+负载均衡</td></tr>
+    <tr><td>src/swarm/run_manager.py</td><td>新增</td><td>创建 run + 发布并行 seed tasks</td></tr>
+    <tr><td>src/swarm/work_queue.py</td><td>新增</td><td>共享任务市场 publish/claim/recover/complete</td></tr>
+    <tr><td>src/swarm/worker.py</td><td>新增</td><td>Agent worker loop: claim → execute → capture → complete</td></tr>
+    <tr><td>start_swarm.py</td><td>新增</td><td>市场化启动入口，替代固定四阶段初始化</td></tr>
+    <tr><td>agent_worker.py</td><td>新增</td><td>Agent 侧 claim/complete CLI</td></tr>
     <tr><td>src/swarm/spawn_handler.py</td><td>194</td><td>信号→Agent 桥接 (Mock/Hermes)</td></tr>
     <tr><td>src/db.py</td><td>255</td><td>SQLite封装+migration幂等</td></tr>
     <tr><td>src/ontology/inference.py</td><td>230</td><td>概念发现+传递推理+漂移检测</td></tr>

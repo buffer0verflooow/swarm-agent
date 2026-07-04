@@ -29,17 +29,21 @@ from typing import Any, Callable, Dict, List, Optional
 
 from .lifecycle import cleanup_stale_agents, get_live_agents
 from .spawner import (
-    poll_spawn_requests,
+    request_spawn,
+    claim_spawn_requests,
     mark_spawn_fulfilled,
     mark_spawn_rejected,
     expire_old_requests,
     merge_duplicate_requests,
+    recover_stale_spawn_claims,
 )
+from .work_queue import claim_work_tasks, poll_work_tasks, recover_stale_work_claims
 
 _log = logging.getLogger("swarm_knowledge.orchestrator")
 
 # 默认轮询间隔
 POLL_SPAWN_SEC = 5
+POLL_WORK_SEC = 2
 POLL_HEARTBEAT_SEC = 10
 POLL_GOVERNANCE_SEC = 60
 POLL_POWER_SCHEDULE_SEC = 15  # 新: power schedule 轮询间隔
@@ -83,6 +87,7 @@ class SwarmOrchestrator:
             tick_interval: 基础 tick 间隔（秒）
         """
         last_spawn = 0.0
+        last_work = 0.0
         last_heartbeat = 0.0
         last_governance = 0.0
         last_power = 0.0
@@ -98,17 +103,22 @@ class SwarmOrchestrator:
                 await self._tick_spawn(run_id)
                 last_spawn = now
 
-            # ② 心跳清理 (每 POLL_HEARTBEAT_SEC)
+            # ② 任务市场维护 (每 POLL_WORK_SEC)
+            if now - last_work >= POLL_WORK_SEC:
+                await self._tick_work_market(run_id)
+                last_work = now
+
+            # ③ 心跳清理 (每 POLL_HEARTBEAT_SEC)
             if now - last_heartbeat >= POLL_HEARTBEAT_SEC:
                 await self._tick_heartbeat(run_id)
                 last_heartbeat = now
 
-            # ③ 治理循环 (每 POLL_GOVERNANCE_SEC)
+            # ④ 治理循环 (每 POLL_GOVERNANCE_SEC)
             if now - last_governance >= POLL_GOVERNANCE_SEC:
                 await self._tick_governance(run_id)
                 last_governance = now
 
-            # ④ Power schedule (每 POLL_POWER_SCHEDULE_SEC)
+            # ⑤ Power schedule (每 POLL_POWER_SCHEDULE_SEC)
             if now - last_power >= POLL_POWER_SCHEDULE_SEC:
                 await self._tick_power_schedule(run_id)
                 last_power = now
@@ -125,6 +135,14 @@ class SwarmOrchestrator:
 
     async def _tick_spawn(self, run_id: str):
         """处理待处理的 spawn 请求"""
+        expired = expire_old_requests(self.db)
+        if expired:
+            _log.info("Spawn: expired %d old requests", expired)
+
+        recovered = recover_stale_spawn_claims(self.db)
+        if recovered:
+            _log.info("Spawn: recovered %d stale spawning claims", recovered)
+
         # 先去重
         merged = merge_duplicate_requests(self.db, run_id)
         if merged:
@@ -137,7 +155,7 @@ class SwarmOrchestrator:
             _log.debug("Spawn: no available slots (%d/%d), skipping tick", live_count, MAX_AGENTS_PER_RUN)
             return
 
-        pending = poll_spawn_requests(self.db, run_id, limit=available_slots)
+        pending = claim_spawn_requests(self.db, run_id, limit=available_slots)
 
         for req in pending:
             if self.spawn_handler is None:
@@ -162,18 +180,70 @@ class SwarmOrchestrator:
                 _log.error("Spawn: failed for %s: %s", req["requested_role"], e)
                 mark_spawn_rejected(self.db, req["request_id"], str(e))
 
-        # 清理过期
-        expired = expire_old_requests(self.db)
-        if expired:
-            _log.info("Spawn: expired %d old requests", expired)
+    async def _tick_work_market(self, run_id: str):
+        """
+        维护共享任务市场。
+
+        Agent 可以直接 claim_work_tasks() 抢任务；Orchestrator 负责恢复卡住的
+        claim，并在某个角色没有足够 live agent 时留下 spawn 信号。
+        """
+        recovered = recover_stale_work_claims(self.db)
+        if recovered:
+            _log.info("WorkMarket: recovered %d stale task claims", recovered)
+
+        pending = poll_work_tasks(self.db, run_id=run_id, status="pending", limit=50)
+        if not pending:
+            return
+
+        live_agents = get_live_agents(self.db, run_id)
+        idle_by_role: Dict[str, int] = {}
+        for agent in live_agents:
+            if (agent.get("load_score") or 0) < 0.5 and agent.get("stealable", 1):
+                idle_by_role[agent["role"]] = idle_by_role.get(agent["role"], 0) + 1
+
+        by_role: Dict[str, List[Dict[str, Any]]] = {}
+        for task in pending:
+            role = task.get("required_role") or self._role_for_task_type(task["task_type"])
+            by_role.setdefault(role, []).append(task)
+
+        for role, tasks in by_role.items():
+            active_spawn = self.db.fetch_one(
+                """SELECT COUNT(*) AS c FROM spawn_requests
+                   WHERE run_id = ? AND requested_role = ?
+                     AND status IN ('pending', 'spawning')""",
+                (run_id, role),
+            )["c"]
+            capacity = idle_by_role.get(role, 0) + active_spawn
+            if len(tasks) <= capacity:
+                continue
+
+            top = tasks[0]
+            context_ids = self._task_context_ids(top)
+            request_spawn(
+                self.db,
+                run_id=run_id,
+                requesting_agent="work-market",
+                requested_role=role,
+                reason=f"任务市场积压: {role} 有 {len(tasks)} 个待处理任务",
+                context_entry_ids=context_ids,
+                parent_task_id=top["task_id"],
+                priority=top["priority"] if top["priority"] is not None else 50,
+                commit=False,
+            )
+            self.db.conn.commit()
+            _log.info("WorkMarket: requested %s for %d pending tasks", role, len(tasks))
+            self._log_behavior(
+                run_id, "adaptation",
+                f"任务市场扩容: {role} 积压 {len(tasks)} 个任务",
+            )
 
     async def _tick_heartbeat(self, run_id: str):
         """清理僵尸 Agent"""
-        stale = await asyncio.to_thread(cleanup_stale_agents, self.db)
+        stale = cleanup_stale_agents(self.db)
         if stale:
             _log.warning("Heartbeat: cleaned %d stale agents: %s", len(stale), [s[:8] for s in stale])
-            await asyncio.to_thread(
-                self._log_behavior, run_id, "adaptation",
+            self._log_behavior(
+                run_id, "adaptation",
                 f"清理僵尸 Agent: {[s[:8] for s in stale]}",
                 stale,
             )
@@ -188,61 +258,66 @@ class SwarmOrchestrator:
             from src.governance.verification import auto_enqueue_validations, process_validation_queue
             from src.ontology.discovery import discover_relations_from_cooccurrence
 
-            result = await asyncio.to_thread(run_promotion_cycle, self.db)
+            result = run_promotion_cycle(self.db)
             promote_count = result.get("promoted", 0) if isinstance(result, dict) else result
             if promote_count:
                 _log.info("Governance: promoted %s entries", promote_count)
-                await asyncio.to_thread(
-                    self._log_behavior, run_id, "optimization",
+                self._log_behavior(
+                    run_id, "optimization",
                     f"DIKW 提升: {promote_count} 条知识升级",
                 )
 
-            decay_count = await asyncio.to_thread(check_and_decay, self.db)
-            if decay_count:
-                _log.info("Governance: decayed %d stale entries", decay_count)
+            decay_result = check_and_decay(self.db)
+            decayed_total = (
+                len(decay_result.get("decayed_rules", [])) +
+                len(decay_result.get("decayed_entries", []))
+                if isinstance(decay_result, dict) else int(decay_result or 0)
+            )
+            if decayed_total:
+                _log.info("Governance: decayed %d stale items", decayed_total)
 
             # 信息素衰减
-            phero_result = await asyncio.to_thread(run_pheromone_decay, self.db)
+            phero_result = run_pheromone_decay(self.db)
             if phero_result.get("decayed") or phero_result.get("stale_marked"):
                 _log.info("Governance: pheromone decayed %d, stale %d",
                           len(phero_result.get("decayed", [])),
                           len(phero_result.get("stale_marked", [])))
 
             # 策略自动蒸馏
-            distill_result = await asyncio.to_thread(auto_distill_strategies, self.db)
+            distill_result = auto_distill_strategies(self.db)
             if distill_result.get("distilled"):
                 _log.info("Governance: auto-distilled %d strategies", len(distill_result["distilled"]))
 
             # 独立验证 pipeline
-            await asyncio.to_thread(auto_enqueue_validations, self.db, run_id)
-            verify_result = await asyncio.to_thread(process_validation_queue, self.db)
+            auto_enqueue_validations(self.db, run_id)
+            verify_result = process_validation_queue(self.db)
             if verify_result.get("processed", 0) > 0:
                 _log.info("Governance: verified %d (confirmed=%d, refuted=%d)",
                           verify_result["processed"],
                           verify_result.get("confirmed", 0),
                           verify_result.get("refuted", 0))
-                await asyncio.to_thread(
-                    self._log_behavior, run_id, "optimization",
+                self._log_behavior(
+                    run_id, "optimization",
                     f"独立验证: {verify_result['processed']}条 "
                     f"(确认={verify_result.get('confirmed',0)}, 反驳={verify_result.get('refuted',0)})",
                 )
 
             # Wisdom 蒸馏 (L4 → distilled_rules)
-            wisdom_result = await asyncio.to_thread(distill_wisdom, self.db)
+            wisdom_result = distill_wisdom(self.db)
             if wisdom_result.get("distilled"):
                 _log.info("Governance: distilled %d wisdom rules", len(wisdom_result["distilled"]))
-                await asyncio.to_thread(
-                    self._log_behavior, run_id, "emergence",
+                self._log_behavior(
+                    run_id, "emergence",
                     f"Wisdom 蒸馏: {len(wisdom_result['distilled'])} 条规则",
                 )
 
             # Ontology 关系自动发现
-            onto_result = await asyncio.to_thread(discover_relations_from_cooccurrence, self.db)
+            onto_result = discover_relations_from_cooccurrence(self.db)
             if onto_result.get("discovered"):
                 _log.info("Governance: discovered %d ontology relations",
                           len(onto_result["discovered"]))
-                await asyncio.to_thread(
-                    self._log_behavior, run_id, "emergence",
+                self._log_behavior(
+                    run_id, "emergence",
                     f"本体发现: {len(onto_result['discovered'])} 条新关系",
                 )
 
@@ -334,38 +409,61 @@ class SwarmOrchestrator:
         
         读取 agent_heartbeats.load_score:
         - load_score < 0.3 的 agent 标记为可窃取
-        - 找到 pending tasks 分配给空闲 agent
+        - 按角色从共享任务市场原子 claim work
         """
         live_agents = get_live_agents(self.db, run_id)
         if not live_agents:
             return
 
         # 找空闲 agent (load < 0.3, stealable=1)
-        idle_agents = [a for a in live_agents if (a.get("load_score") or 0) < 0.3]
+        idle_agents = [
+            a for a in live_agents
+            if (a.get("load_score") or 0) < 0.3 and a.get("stealable", 1)
+        ]
         if not idle_agents:
             return
 
-        # 找 pending tasks 未分配 agent
-        pending_tasks = self.db.fetch_all(
-            "SELECT task_id, task_type, focus_params FROM agent_tasks WHERE run_id = ? AND status = 'pending' AND agent_id IS NULL ORDER BY created_at LIMIT ?",
-            (run_id, len(idle_agents)),
-        )
-        if not pending_tasks:
-            return
-
         assigned = 0
-        for task, agent in zip(pending_tasks, idle_agents):
-            self.db.execute(
-                "UPDATE agent_tasks SET agent_id = ?, status = 'running', started_at = datetime('now') WHERE task_id = ?",
-                (agent["agent_id"], task["task_id"]),
+        for agent in idle_agents:
+            claimed = claim_work_tasks(
+                self.db,
+                run_id=run_id,
+                agent_id=agent["agent_id"],
+                role=agent["role"],
+                limit=1,
             )
+            if not claimed:
+                continue
+            task_id = claimed[0]["task_id"]
+            self.db.execute(
+                """UPDATE agent_heartbeats
+                   SET current_task_id = ?, load_score = MAX(load_score, 0.5)
+                   WHERE agent_id = ?""",
+                (task_id, agent["agent_id"]),
+            )
+            self.db.conn.commit()
             assigned += 1
 
         if assigned:
-            self.db.conn.commit()
-            _log.info("LoadBalance: assigned %d tasks to idle agents", assigned)
+            _log.info("LoadBalance: claimed %d market tasks for idle agents", assigned)
             self._log_behavior(run_id, "optimization",
-                f"负载均衡: 分配 {assigned} 个待处理任务给空闲 agent")
+                f"负载均衡: {assigned} 个空闲 agent 从任务市场领取工作")
+
+    def _role_for_task_type(self, task_type: str) -> str:
+        return {
+            "scan": "scanner",
+            "analyze": "analyst",
+            "exploit": "exploiter",
+            "report": "reporter",
+        }.get(task_type, "custom")
+
+    def _task_context_ids(self, task: dict) -> List[str]:
+        try:
+            focus = json.loads(task.get("focus_params") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            return []
+        ids = focus.get("context_entry_ids", [])
+        return ids if isinstance(ids, list) else []
 
     def _build_spawn_context(self, req: dict) -> str:
         """

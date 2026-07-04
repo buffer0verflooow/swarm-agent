@@ -40,7 +40,13 @@ class AgentLifecycle:
         self.agent_id = agent_id
         self.run_id = run_id
 
-    def register(self, role: str, capabilities: list = None, model: str = None) -> None:
+    def register(
+        self,
+        role: str,
+        capabilities: list = None,
+        model: str = None,
+        model_profile_id: str = None,
+    ) -> None:
         """
         Agent 启动时调用一次。
         写入 agent_profiles（如果已存在则更新状态）并插入心跳记录。
@@ -51,14 +57,15 @@ class AgentLifecycle:
         # Upsert agent profile
         self.db.execute(
             """INSERT INTO agent_profiles
-               (agent_id, agent_name, role, capabilities, model_preference, status)
-               VALUES (?, ?, ?, ?, ?, 'active')
+               (agent_id, agent_name, role, capabilities, model_preference, model_profile_id, status)
+               VALUES (?, ?, ?, ?, ?, ?, 'active')
                ON CONFLICT(agent_id) DO UPDATE SET
                    status = 'active',
                    role = excluded.role,
                    capabilities = excluded.capabilities,
-                   model_preference = excluded.model_preference""",
-            (self.agent_id, f"{role}-{self.agent_id[:8]}", role, caps, model),
+                   model_preference = excluded.model_preference,
+                   model_profile_id = COALESCE(excluded.model_profile_id, agent_profiles.model_profile_id)""",
+            (self.agent_id, f"{role}-{self.agent_id}", role, caps, model, model_profile_id),
         )
 
         # UPSERT heartbeat: 不重置 beat_count（保留历史）
@@ -70,6 +77,17 @@ class AgentLifecycle:
                    last_beat = datetime('now'),
                    run_id = excluded.run_id""",
             (self.agent_id, self.run_id),
+        )
+        self.db.conn.commit()
+
+    def set_model_profile(self, model_profile_id: str = None, model: str = None) -> None:
+        """记录当前 agent 采用的蜂群模型 profile。"""
+        self.db.execute(
+            """UPDATE agent_profiles
+               SET model_profile_id = COALESCE(?, model_profile_id),
+                   model_preference = COALESCE(?, model_preference)
+               WHERE agent_id = ?""",
+            (model_profile_id, model, self.agent_id),
         )
         self.db.conn.commit()
 
@@ -191,7 +209,9 @@ def get_live_agents(db, run_id: str, max_idle_sec: int = None) -> list:
     """
     idle = max_idle_sec if max_idle_sec is not None else DEFAULT_TIMEOUT_SEC
     rows = db.fetch_all(
-        """SELECT ah.agent_id, ap.role, ah.load_score, ah.current_task_id, ah.last_beat
+        """SELECT ah.agent_id, ap.role, ah.load_score, ah.current_task_id,
+                  ah.last_beat, COALESCE(ah.stealable, 1) AS stealable,
+                  ap.model_profile_id, ap.model_preference
            FROM agent_heartbeats ah
            JOIN agent_profiles ap ON ah.agent_id = ap.agent_id
            WHERE ah.run_id = ?

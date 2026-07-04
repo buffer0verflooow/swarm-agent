@@ -143,6 +143,38 @@ def _has_numbers(text: str) -> bool:
     return bool(re.search(r'\d+', text))
 
 
+def _metadata_tags(metadata: Dict[str, Any]) -> List[str]:
+    """Normalize explicit tags supplied by CLI or agent metadata."""
+    raw_tags = metadata.get("tags", [])
+    if isinstance(raw_tags, str):
+        candidates = raw_tags.split(",")
+    elif isinstance(raw_tags, (list, tuple, set)):
+        candidates = raw_tags
+    else:
+        candidates = []
+
+    tags = []
+    seen = set()
+    for tag in candidates:
+        normalized = str(tag).strip().lower().replace(" ", "_")
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            tags.append(normalized)
+    return tags
+
+
+def _merge_tags(*groups: List[str]) -> List[str]:
+    merged = []
+    seen = set()
+    for group in groups:
+        for tag in group:
+            normalized = str(tag).strip().lower().replace(" ", "_")
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                merged.append(normalized)
+    return merged
+
+
 # ============================================================================
 # Classifier — DIKW 分级 + 领域 + 类型
 # ============================================================================
@@ -159,7 +191,7 @@ def classify_capture(ctx: CaptureContext) -> Dict[str, Any]:
 
     ktype = classify_knowledge_type(content)
     domain = classify_domain(content)
-    tags = extract_tags(content)
+    tags = _merge_tags(_metadata_tags(ctx.metadata), extract_tags(content))
     intent = _infer_intent(ctx, ktype)
 
     # DIKW 分级: 不同来源有不同的基础 level
@@ -446,8 +478,8 @@ def capture(
                 ),
             )
 
-    # 8.5 自动触发 spawn 请求（在 commit 之前）
-    _maybe_request_spawn(db, entry_id, classification, ctx)
+    # 8.5 发布蜂群任务市场信号，并为缺少容量的角色触发 spawn
+    _emit_swarm_signals(db, entry_id, classification, ctx)
 
     # 8.6 token 估算 — 基于内容长度估算 token 消耗
     estimated_tokens = _estimate_tokens(ctx.content, classification)
@@ -475,52 +507,61 @@ def capture(
     return entry_id
 
 
-def _maybe_request_spawn(db, entry_id: str, classification: Dict[str, Any], ctx: CaptureContext):
+def _emit_swarm_signals(db, entry_id: str, classification: Dict[str, Any], ctx: CaptureContext):
     """
-    发现高价值目标时自动触发 spawn 请求。
+    发现高价值目标时向共享任务市场发布工作单元。
 
-    规则:
-        vulnerability + attack → exploiter
-        technique + attack     → exploiter
-        pattern + enumerate    → scanner
-        strategy + defend      → reporter
-
-    防重复：同一 run 中相同角色只发一次。
+    一个发现可以同时生成 analyze/exploit/report 等多个任务。已有 live
+    agent 会从市场抢占任务；如果某个角色容量不足，再留下 spawn 信号。
     """
-    # 只对特定来源触发（避免每次 capture 都触发）
     high_value_sources = {CaptureSource.TASK_RESULT, CaptureSource.DISCOVERY, CaptureSource.CROSS_VALIDATION}
     if ctx.source not in high_value_sources:
-        return
-
-    ktype = classification.get("knowledge_type", "")
-    intent = classification.get("knowledge_intent", "")
-
-    triggers = {
-        ("vulnerability", "attack"): "exploiter",
-        ("technique", "attack"):     "exploiter",
-        ("pattern", "enumerate"):    "scanner",
-        ("strategy", "defend"):      "reporter",
-    }
-    role = triggers.get((ktype, intent))
-    if not role:
         return
 
     run_id = ctx.source_run_id
     if not run_id:
         return
 
-    # 防重复：检查是否已有同角色的 pending spawn 请求
-    existing = db.fetch_one(
-        "SELECT 1 FROM spawn_requests WHERE run_id = ? AND requested_role = ? AND status = 'pending'",
-        (run_id, role),
+    try:
+        from ...swarm.work_queue import publish_tasks_for_knowledge
+    except ImportError:
+        from src.swarm.work_queue import publish_tasks_for_knowledge
+
+    tasks = publish_tasks_for_knowledge(
+        db,
+        entry_id=entry_id,
+        classification=classification,
+        run_id=run_id,
+        source_agent=ctx.source_agent,
+        parent_task_id=ctx.source_task_id,
+        commit=False,
     )
-    if existing:
+    if not tasks:
         return
 
+    _maybe_request_spawn_for_market_tasks(db, entry_id, classification, ctx, tasks)
+    _log.info(
+        "_emit_swarm_signals: published %d market tasks from %s",
+        len(tasks), entry_id[:8],
+    )
+
+
+def _maybe_request_spawn_for_market_tasks(
+    db,
+    entry_id: str,
+    classification: Dict[str, Any],
+    ctx: CaptureContext,
+    tasks: List[Dict[str, Any]],
+):
+    """为任务市场中容量不足的角色留下 spawn 信号。"""
     try:
         from ...swarm.spawner import request_spawn
     except ImportError:
         from src.swarm.spawner import request_spawn
+
+    run_id = ctx.source_run_id
+    if not run_id:
+        return
 
     # 链深度: 从父 spawn 请求继承
     parent_chain_depth = 0
@@ -532,17 +573,50 @@ def _maybe_request_spawn(db, entry_id: str, classification: Dict[str, Any], ctx:
         if parent_req:
             parent_chain_depth = parent_req["chain_depth"] or 0
 
-    request_spawn(
-        db,
-        run_id=run_id,
-        requesting_agent=ctx.source_agent,
-        requested_role=role,
-        reason=f"自动触发：发现 {ktype} [{entry_id[:8]}]",
-        context_entry_ids=[entry_id],
-        parent_task_id=ctx.source_task_id,
-        chain_depth=parent_chain_depth + 1,
-    )
-    _log.info("_maybe_request_spawn: triggered %s → %s from %s", ktype, role, ctx.source_agent[:8] if ctx.source_agent else "?")
+    for role in sorted({t["required_role"] for t in tasks}):
+        pending_tasks = db.fetch_one(
+            """SELECT COUNT(*) AS c FROM agent_tasks
+               WHERE run_id = ? AND status = 'pending' AND required_role = ?""",
+            (run_id, role),
+        )["c"]
+        live_agents = db.fetch_one(
+            """SELECT COUNT(*) AS c
+               FROM agent_heartbeats ah
+               JOIN agent_profiles ap ON ah.agent_id = ap.agent_id
+               WHERE ah.run_id = ? AND ap.role = ?
+                 AND (julianday('now') - julianday(ah.last_beat)) * 86400 < 90""",
+            (run_id, role),
+        )["c"]
+        active_spawn = db.fetch_one(
+            """SELECT COUNT(*) AS c FROM spawn_requests
+               WHERE run_id = ? AND requested_role = ?
+                 AND status IN ('pending', 'spawning')""",
+            (run_id, role),
+        )["c"]
+
+        if pending_tasks <= live_agents + active_spawn:
+            continue
+
+        max_priority = max(t["priority"] for t in tasks if t["required_role"] == role)
+        request_spawn(
+            db,
+            run_id=run_id,
+            requesting_agent=ctx.source_agent,
+            requested_role=role,
+            reason=(
+                f"任务市场需要 {role}: {pending_tasks} 个待处理任务，"
+                f"来自 {classification.get('knowledge_type')} [{entry_id[:8]}]"
+            ),
+            context_entry_ids=[entry_id],
+            parent_task_id=ctx.source_task_id,
+            priority=max_priority,
+            chain_depth=parent_chain_depth + 1,
+            commit=False,
+        )
+        _log.info(
+            "_emit_swarm_signals: requested %s capacity for %s",
+            role, entry_id[:8],
+        )
 
 
 def _estimate_tokens(content: str, classification: dict) -> int:

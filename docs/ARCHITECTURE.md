@@ -76,7 +76,7 @@
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                     PostgreSQL                           │
+│                     SQLite 单文件                         │
 │                                                          │
 │  ┌───────────┐  ┌──────────────┐  ┌───────────────────┐ │
 │  │ swarm_runs│  │knowledge_    │  │ ontology_          │ │
@@ -95,7 +95,7 @@
                           │
                           ▼
 ┌──────────────────────────────────────────────────────────┐
-│                     Memgraph / Neo4j                      │
+│              ontology_* tables / in-process graph         │
 │                                                          │
 │  (:Concept)   -[:SPECIALIZES]-> (:Concept)               │
 │  (:Agent)     -[:USES]->        (:Tool)                  │
@@ -116,4 +116,4 @@
 | 本体 | 隐式（函数/行为标签） | **显式本体层** (概念+关系) |
 | 参与者 | 单一分析流水线 | **多个并发 Agent** |
 | 演化 | 反例衰减 | 反例衰减 + **版本演化** + **策略蒸馏** |
-| 存储 | PG + Memgraph | PG + Neo4j/Memgraph (相同模式) |
+| 存储 | PG + Memgraph | SQLite 单文件 + ontology 表 |

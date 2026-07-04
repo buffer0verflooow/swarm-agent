@@ -6,24 +6,23 @@
 ## 快速开始
 
 ```bash
-# 1. 初始化 PostgreSQL
-createdb swarm_knowledge
-psql swarm_knowledge -c "CREATE EXTENSION IF NOT EXISTS vector"
-psql swarm_knowledge -c "CREATE EXTENSION IF NOT EXISTS pg_trgm"  # 用于相似度
-
-# 2. 运行迁移
-for f in migrations/*.sql; do
-    psql swarm_knowledge -f "$f"
-done
-
-# 3. 安装依赖
+# 1. 安装可选开发依赖
 pip install -r requirements.txt
 
-# 4. 运行治理周期
+# 2. 初始化 SQLite 单文件数据库
+python init_db.py
+
+# 3. 查看统计
+python init_db.py --stats
+
+# 4. 运行集成测试
+python tests/test_swarm_loop.py
+
+# 5. 手动运行治理周期
 python -c "
-from swarm_knowledge import run_promotion_cycle, run_full_clustering, run_ontology_maintenance
-import asyncio
-asyncio.run(run_promotion_cycle(pg_client))
+from src import SwarmDB, run_promotion_cycle
+db = SwarmDB('swarm_knowledge.db')
+print(run_promotion_cycle(db))
 "
 ```
 
@@ -99,31 +98,26 @@ INSERT INTO knowledge_lineage (
 
 ### 知识查询 (Agent 侧)
 
-```sql
--- 语义检索: 找相似的经验
-SELECT title, content, trust_vector, level
-FROM knowledge_entries
-WHERE status = 'active'
-  AND domain = 'network'
-  AND level >= 2
-ORDER BY embedding <-> (SELECT embedding FROM knowledge_entries WHERE id = 'query-id')
-LIMIT 10;
+```python
+from src import SwarmDB, search, get_active_rules
 
--- 策略查询: 找最佳策略
-SELECT rule_name, rule_description, priority
-FROM distilled_rules
-WHERE is_active = TRUE
-  AND 'scanner' = ANY(applicable_agents)
-  AND trigger_condition->>'intent' = 'recon'
-ORDER BY priority DESC;
+db = SwarmDB("swarm_knowledge.db")
 
--- 本体推理: 找工具链
-SELECT oc2.concept_name AS recommended_tool
-FROM ontology_relations r
-JOIN ontology_concepts oc1 ON r.from_concept_id = oc1.concept_id
-JOIN ontology_concepts oc2 ON r.to_concept_id = oc2.concept_id
-WHERE oc1.concept_name = 'port_scan'
-  AND r.relation_type = 'implements';
+# 全文检索: 找相关经验
+results = search(db, "如何绕过 ASLR", domain="security", level_min=2)
+
+# 策略查询: 找适合 scanner 的规则
+rules = get_active_rules(db, agent_role="scanner", intent="recon")
+
+# 本体查询: 找 port_scan 的实现工具
+tools = db.fetch_all("""
+    SELECT oc1.concept_name AS tool
+    FROM ontology_relations r
+    JOIN ontology_concepts oc1 ON r.from_concept_id = oc1.concept_id
+    JOIN ontology_concepts oc2 ON r.to_concept_id = oc2.concept_id
+    WHERE oc2.concept_name = 'port_scan'
+      AND r.relation_type = 'implements'
+""")
 ```
 
 ## 与 reverse-engine 的对应关系
@@ -166,12 +160,17 @@ Phase 4: 跨蜂群知识共享
 
 ```
 swarm-knowledge/
+├── agent_worker.py                  # Agent 侧任务市场 CLI
+├── start_swarm.py                   # 创建 run 并发布市场 seed tasks
+├── swarmctl.py                      # 模型 profile、对话事件、run summary 控制面
 ├── migrations/
-│   ├── 001_swarm_core.sql          # 蜂群核心表
-│   ├── 002_knowledge_core.sql      # DIKW 知识金字塔
-│   ├── 003_ontology.sql            # 本体模型
-│   ├── 004_embeddings_strategies.sql # 向量 + 聚类 + 策略
-│   └── 005_seed_ontology.sql       # 种子本体数据
+│   ├── 001_schema.sql              # SQLite 核心表 + 种子本体
+│   ├── 002_swarm_extensions.sql    # spawn_requests + heartbeats
+│   ├── 003_architecture_fixes.sql  # token/pheromone/power schedule
+│   ├── 004_verification_wisdom.sql # 验证队列 + wisdom 字段
+│   ├── 005_spawn_claims.sql        # spawn claim 恢复时间戳
+│   ├── 006_work_market.sql         # agent_tasks 共享任务市场
+│   └── 007_model_profiles.sql      # 蜂群自维护模型 profile + 对话事件
 ├── src/
 │   ├── __init__.py
 │   ├── governance/
@@ -181,8 +180,8 @@ swarm-knowledge/
 │   ├── ontology/
 │   │   ├── __init__.py
 │   │   └── inference.py            # 概念发现 + 关系推理 + 漂移检测
-│   ├── orchestrator/               # (预留) 蜂群编排逻辑
-│   └── agents/                     # (预留) Agent 知识提取管道
+│   ├── swarm/                      # client API、编排、生命周期、spawn 信号、任务市场、模型配置、worker loop、run manager
+│   └── agents/                     # capture/retrieval/extractor
 ├── docs/
 │   ├── ARCHITECTURE.md             # 架构总览
 │   └── DESIGN.md                   # 本文档

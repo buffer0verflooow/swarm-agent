@@ -296,7 +296,11 @@ def check_and_decay(db, threshold: int = COUNTER_THRESHOLD) -> Dict[str, Any]:
                 "UPDATE knowledge_entries SET status = 'stale', updated_at = datetime('now') WHERE id = ?",
                 (entry["id"],),
             )
-            decayed_entries.append({"id": entry["id"][:8], "title": entry.get("title", ""), "ce_count": ce["cnt"]})
+            decayed_entries.append({
+                "id": entry["id"][:8],
+                "title": entry["title"] or "",
+                "ce_count": ce["cnt"],
+            })
 
     db.conn.commit()
     _log.info("decay: %d rules + %d entries", len(decayed_rules), len(decayed_entries))

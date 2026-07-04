@@ -52,21 +52,31 @@ def auto_enqueue_validations(db, run_id: str = None) -> Dict[str, Any]:
     Returns:
         {"enqueued": N, "skipped": N}
     """
+    run_filter = "AND ke.source_run_id = ?" if run_id else ""
+    params: List[Any] = []
+    if run_id:
+        params.append(run_id)
+    params.append(MAX_QUEUE_SIZE)
+
     # 找到需要验证的条目
     candidates = db.fetch_all(
-        """SELECT ke.id, ke.title, ke.content, ke.knowledge_type,
-                  ke.level, ke.trust_vector, ke.source_agent, ke.source_run_id
+        f"""SELECT ke.id, ke.title, ke.content, ke.knowledge_type,
+                   ke.level, ke.trust_vector, ke.source_agent, ke.source_run_id
            FROM knowledge_entries ke
            WHERE ke.status = 'active'
              AND ke.validation_count = 0
+             {run_filter}
              AND (
                (ke.knowledge_type = 'vulnerability' AND ke.level >= 1)
                OR (ke.knowledge_type = 'mechanism' AND ke.level >= 3)
                OR ke.level >= 3
              )
-             AND ke.id NOT IN (SELECT knowledge_id FROM validation_queue WHERE status IN ('pending', 'assigned', 'validating'))
+             AND ke.id NOT IN (
+                 SELECT knowledge_id FROM validation_queue
+                 WHERE status IN ('pending', 'assigned', 'validating', 'verified', 'refuted')
+             )
            ORDER BY ke.level DESC, ke.created_at DESC LIMIT ?""",
-        (MAX_QUEUE_SIZE,),
+        tuple(params),
     )
 
     enqueued = 0
@@ -168,9 +178,11 @@ def process_validation_queue(db) -> Dict[str, Any]:
             confirmed += 1
         elif verdict["verdict"] == "refuted":
             _update_trust(db, kid, delta=-REFUTE_PENALTY)
+            _mark_validation_attempt(db, kid)
             _record_counter_example(db, kid, verdict["reason"])
             refuted += 1
         else:
+            _mark_validation_attempt(db, kid)
             inconclusive += 1
 
         processed += 1
@@ -268,6 +280,18 @@ def _update_trust(db, entry_id: str, delta: float) -> None:
     db.execute(
         "UPDATE knowledge_entries SET trust_vector = ?, updated_at = datetime('now') WHERE id = ?",
         (json.dumps(tv), entry_id),
+    )
+
+
+def _mark_validation_attempt(db, entry_id: str) -> None:
+    """记录一次验证尝试，不改变置信度。"""
+    db.execute(
+        """UPDATE knowledge_entries
+           SET last_validated_at = datetime('now'),
+               validation_count = validation_count + 1,
+               updated_at = datetime('now')
+           WHERE id = ?""",
+        (entry_id,),
     )
 
 

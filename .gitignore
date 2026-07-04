@@ -1,1 +1,55 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build and packaging output
+build/
+dist/
+*.egg-info/
+
+# Local environment and editor files
+.env
+.env.*
+!.env.example
+!.env.sample
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs and runtime output
+*.log
+logs/
+tmp/
+temp/
+
+# Local databases, SQLite sidecars, and backups
 *.db
+*.sqlite
+*.sqlite3
+*.db-*
+*.db-shm
+*.db-wal
+*.db-journal
+*.db.bak.*
+*.bak
+*.bak.*
+*.backup

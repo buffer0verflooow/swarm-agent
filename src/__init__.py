@@ -27,6 +27,25 @@ from .agents.extractor import (
     extract_knowledge_from_text, chunk_article, classify_knowledge_type,
 )
 from .swarm.spawn_handler import BaseSpawnHandler, MockSpawnHandler, HermesSpawnHandler
+from .swarm.work_queue import (
+    publish_work_task, publish_tasks_for_knowledge, poll_work_tasks,
+    claim_work_tasks, recover_stale_work_claims,
+    complete_work_task, fail_work_task,
+)
+from .swarm.model_config import (
+    list_model_profiles, get_model_profile, upsert_model_profile,
+    assign_task_model_profile, resolve_task_model_profile,
+    record_swarm_event, build_run_summary,
+)
+from .swarm.worker import SwarmWorker, build_task_context, normalize_executor_result
+from .swarm.run_manager import (
+    create_swarm_run, seed_swarm_run, create_seeded_swarm_run,
+    build_seed_tasks,
+)
+from .swarm.client_api import (
+    submit_swarm_task, refresh_run_status, get_swarm_status,
+    get_swarm_result, wait_for_swarm_result,
+)
 
 __all__ = [
     # DB
@@ -54,4 +73,16 @@ __all__ = [
     "extract_knowledge_from_text", "chunk_article", "classify_knowledge_type",
     # Spawn Handler
     "BaseSpawnHandler", "MockSpawnHandler", "HermesSpawnHandler",
+    # Work Market
+    "publish_work_task", "publish_tasks_for_knowledge", "poll_work_tasks",
+    "claim_work_tasks", "recover_stale_work_claims",
+    "complete_work_task", "fail_work_task",
+    "list_model_profiles", "get_model_profile", "upsert_model_profile",
+    "assign_task_model_profile", "resolve_task_model_profile",
+    "record_swarm_event", "build_run_summary",
+    "SwarmWorker", "build_task_context", "normalize_executor_result",
+    "create_swarm_run", "seed_swarm_run", "create_seeded_swarm_run",
+    "build_seed_tasks",
+    "submit_swarm_task", "refresh_run_status", "get_swarm_status",
+    "get_swarm_result", "wait_for_swarm_result",
 ]

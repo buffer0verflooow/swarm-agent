@@ -362,10 +362,11 @@ def extract_knowledge_from_text(
         )
         results.append(entry)
 
+    summary_domain = results[0].domain if results else "none"
     _log.info(
         "extract_knowledge: %d chunks → %d entries (domain=%s, types=%s)",
-        len(chunks), len(results), domain,
-        ', '.join(set(e.knowledge_type for e in results)),
+        len(chunks), len(results), summary_domain,
+        ', '.join(sorted(set(e.knowledge_type for e in results))) if results else "none",
     )
     return results
 
@@ -399,6 +400,7 @@ def format_extraction_for_insert(
             }),
             "tags": entry.tags,
             "status": "active",
+            "content_hash": compute_content_hash(entry.content),
             "source_ref": json.dumps(entry.source_ref, default=str),
         })
     return formatted
@@ -406,36 +408,65 @@ def format_extraction_for_insert(
 
 # ── 批量插入工具 ──
 
+def _sql_literal(value: Any) -> str:
+    """Return a SQLite string literal, or NULL."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, (dict, list)):
+        value = json.dumps(value, ensure_ascii=False, default=str)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _json_text(value: Any, default: Any) -> str:
+    """Normalize JSON-ish fields to text stored in SQLite."""
+    if value is None:
+        value = default
+    if isinstance(value, str):
+        try:
+            json.loads(value)
+            return value
+        except json.JSONDecodeError:
+            return json.dumps(value, ensure_ascii=False)
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
 def generate_insert_sql(entries: List[Dict[str, Any]]) -> str:
-    """生成批量 INSERT SQL"""
+    """生成可在当前 SQLite schema 上执行的批量 INSERT SQL。"""
     if not entries:
         return "-- no entries to insert"
 
     values_clauses = []
     for e in entries:
+        tags_json = _json_text(e.get("tags"), [])
+        trust_vector_json = _json_text(e.get("trust_vector"), {
+            "logic_soundness": 0.6,
+            "base_confidence": 0.7,
+            "cross_validation": 0.0,
+        })
+        content_hash = e.get("content_hash") or compute_content_hash(e["content"])
         values_clauses.append(
             f"""(
-                '{e["id"]}', {e["level"]}, '{e["knowledge_type"]}',
-                '{e["content"].replace("'", "''")}',
-                '{e["title"].replace("'", "''")}',
-                '{e["source_agent"]}',
-                {'NULL' if not e.get("source_run_id") else f"'{e['source_run_id']}'"},
-                '{e["domain"]}',
-                '{e["knowledge_intent"]}',
-                '{e["trust_vector"]}'::jsonb,
-                ARRAY[{','.join(f"'{t}'" for t in e['tags'])}]::text[],
-                'active'
+                {_sql_literal(e["id"])}, {int(e["level"])}, {_sql_literal(e["knowledge_type"])},
+                {_sql_literal(e["content"])},
+                {_sql_literal(e.get("title", ""))},
+                {_sql_literal(e.get("source_agent", "knowledge-extractor"))},
+                {_sql_literal(e.get("source_run_id"))},
+                {_sql_literal(e.get("domain", "general"))},
+                {_sql_literal(e.get("knowledge_intent", "understand"))},
+                {_sql_literal(trust_vector_json)},
+                {_sql_literal(tags_json)},
+                {_sql_literal(e.get("status", "active"))},
+                {_sql_literal(content_hash)}
             )"""
         )
 
     return f"""
-    INSERT INTO knowledge_entries (
+    INSERT OR IGNORE INTO knowledge_entries (
         id, level, knowledge_type, content, title,
         source_agent, source_run_id, domain, knowledge_intent,
-        trust_vector, tags, status
+        trust_vector, tags, status, content_hash
     ) VALUES
-    {','.join(values_clauses)}
-    ON CONFLICT DO NOTHING;
+    {','.join(values_clauses)};
     """
 
 
@@ -444,27 +475,27 @@ def generate_lineage_sql(
     source_type: str = "document_extraction",
     extraction_method: str = "pattern_matching",
 ) -> str:
-    """生成对应的 lineage INSERT SQL"""
+    """生成对应的 SQLite lineage INSERT SQL。"""
     if not entries:
         return "-- no lineage to insert"
 
     values_clauses = []
     for e in entries:
+        source_ref_json = _json_text(e.get("source_ref"), {})
         values_clauses.append(
             f"""(
-                '{e["id"]}',
-                '{source_type}',
-                '{e.get("source_ref", "{}")}'::jsonb,
-                '{extraction_method}',
+                {_sql_literal(e["id"])},
+                {_sql_literal(source_type)},
+                {_sql_literal(source_ref_json)},
+                {_sql_literal(extraction_method)},
                 1.0
             )"""
         )
 
     return f"""
-    INSERT INTO knowledge_lineage (
+    INSERT OR IGNORE INTO knowledge_lineage (
         knowledge_id, source_type, source_ref,
         extraction_method, confidence_contribution
     ) VALUES
-    {','.join(values_clauses)}
-    ON CONFLICT DO NOTHING;
+    {','.join(values_clauses)};
     """

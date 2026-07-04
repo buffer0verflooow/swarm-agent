@@ -18,8 +18,7 @@ spawn_requests 表中存的是"需要什么角色的Agent"信号。
 
 from __future__ import annotations
 
-import asyncio
-import json
+import inspect
 import logging
 import uuid
 from typing import Any, Callable, Dict, Optional
@@ -112,43 +111,64 @@ class HermesSpawnHandler(BaseSpawnHandler):
             "{reason}\n\n"
             "上下文:\n{context}\n\n"
             "要求:\n"
+            "0. 启动后先从共享任务市场领取 scanner 工作，不等待阶段交接；"
+            "领取 JSON 中的 model_profile 是蜂群选择的模型/工具策略，Hermes 只负责承载执行:\n"
+            "   python3 ~/workspace/research/swarm-knowledge/agent_worker.py "
+            "--run-id '{run_id}' --agent '{agent_label}' --role scanner --claim-only\n"
             "1. 使用 nmap/nuclei/ffuf 等工具执行扫描\n"
             "2. 发现的结果通过 capture.py 写入知识库:\n"
             "   python3 ~/workspace/research/swarm-knowledge/capture.py "
-            "  --content '发现描述' --agent 'scanner-{agent_id[:8]}' "
-            "  --source task_result --tags 'recon,scan'\n"
-            "3. 如果发现高价值目标(开放端口/漏洞)，capture 会自动触发 spawn\n"
-            "4. 每30秒发心跳: lc.beat(current_task_id=..., load=0.5)"
+            "  --content '发现描述' --agent '{agent_label}' "
+            "  --source task_result --run-id '{run_id}' --task-id '{parent_task_id}' "
+            "  --tags 'recon,scan'\n"
+            "3. 完成任务后用 agent_worker.py --complete-task-id <task_id> --content '结果摘要' 标记完成\n"
+            "4. 如果发现高价值目标(开放端口/漏洞)，capture 会自动发布市场任务并触发 spawn\n"
+            "5. 每30秒发心跳: lc.beat(current_task_id=..., load=0.5)"
         ),
         "exploiter": (
             "你是蜂群 exploiter agent。你的任务是利用以下发现:\n"
             "{reason}\n\n"
             "上下文:\n{context}\n\n"
             "要求:\n"
+            "0. 启动后先从共享任务市场领取 exploiter 工作，不等待 analyst 手工交接；"
+            "领取 JSON 中的 model_profile 是蜂群选择的模型/工具策略，Hermes 只负责承载执行:\n"
+            "   python3 ~/workspace/research/swarm-knowledge/agent_worker.py "
+            "--run-id '{run_id}' --agent '{agent_label}' --role exploiter --claim-only\n"
             "1. 基于上下文中的漏洞发现，尝试利用\n"
             "2. 使用 sqlmap/metasploit/burpsuite 等工具\n"
             "3. 每个利用尝试通过 capture.py 写入知识库\n"
-            "4. 利用成功后标记为 vulnerability 类型\n"
-            "5. chain_depth={chain_depth}, 不超过 max_chain_depth={max_chain_depth}"
+            "4. 完成任务后用 agent_worker.py --complete-task-id <task_id> --content '结果摘要' 标记完成\n"
+            "5. 利用成功后标记为 vulnerability 类型\n"
+            "6. chain_depth={chain_depth}, 不超过 max_chain_depth={max_chain_depth}"
         ),
         "analyst": (
             "你是蜂群 analyst agent。你的任务是分析以下内容:\n"
             "{reason}\n\n"
             "上下文:\n{context}\n\n"
             "要求:\n"
+            "0. 启动后先从共享任务市场领取 analyst 工作，不等待 scanner 完整结束；"
+            "领取 JSON 中的 model_profile 是蜂群选择的模型/工具策略，Hermes 只负责承载执行:\n"
+            "   python3 ~/workspace/research/swarm-knowledge/agent_worker.py "
+            "--run-id '{run_id}' --agent '{agent_label}' --role analyst --claim-only\n"
             "1. 对发现的端点/服务进行深度分析\n"
             "2. 反编译/反汇编/代码审计\n"
             "3. 分析结果通过 capture.py 写入知识库\n"
-            "4. 发现攻击模式后 capture 会自动触发 exploiter spawn"
+            "4. 完成任务后用 agent_worker.py --complete-task-id <task_id> --content '结果摘要' 标记完成\n"
+            "5. 发现攻击模式后 capture 会自动发布 exploiter 市场任务"
         ),
         "reporter": (
             "你是蜂群 reporter agent。你的任务是生成报告:\n"
             "{reason}\n\n"
             "上下文:\n{context}\n\n"
             "要求:\n"
+            "0. 启动后先从共享任务市场领取 reporter 工作，持续汇总当前可信知识；"
+            "领取 JSON 中的 model_profile 是蜂群选择的模型/工具策略，Hermes 只负责承载执行:\n"
+            "   python3 ~/workspace/research/swarm-knowledge/agent_worker.py "
+            "--run-id '{run_id}' --agent '{agent_label}' --role reporter --claim-only\n"
             "1. 从知识库检索所有相关发现\n"
             "2. 按严重程度排序，生成结构化报告\n"
-            "3. 报告通过 capture.py 写入知识库 (knowledge_type=strategy)"
+            "3. 报告通过 capture.py 写入知识库 (knowledge_type=strategy)\n"
+            "4. 完成任务后用 agent_worker.py --complete-task-id <task_id> --content '报告摘要' 标记完成"
         ),
     }
 
@@ -168,6 +188,8 @@ class HermesSpawnHandler(BaseSpawnHandler):
         reason = spawn_request["reason"] if spawn_request["reason"] else ""
         chain_depth = spawn_request["chain_depth"] if spawn_request["chain_depth"] else 0
         max_chain_depth = spawn_request["max_chain_depth"] if spawn_request["max_chain_depth"] else 3
+        fallback_agent_id = str(uuid.uuid4())
+        parent_task_id = spawn_request.get("parent_task_id") or ""
 
         template = self.GOAL_TEMPLATES.get(role, self.GOAL_TEMPLATES["scanner"])
         goal = template.format(
@@ -175,24 +197,43 @@ class HermesSpawnHandler(BaseSpawnHandler):
             context=context,
             chain_depth=chain_depth,
             max_chain_depth=max_chain_depth,
-            agent_id="",
+            agent_label=f"{role}-{fallback_agent_id[:8]}",
+            run_id=spawn_request["run_id"],
+            parent_task_id=parent_task_id,
+            role=role,
         )
 
-        agent_id = str(uuid.uuid4())
+        if not self.delegate_fn:
+            _log.warning("HermesSpawnHandler: no delegate_fn; refusing to mark spawn as created")
+            return None
 
-        if self.delegate_fn:
-            # 实际调用 delegate_task
-            try:
-                result = self.delegate_fn(goal=goal, context=context)
-                _log.info("HermesSpawnHandler: delegate_task returned for %s", agent_id[:8])
-            except Exception as e:
-                _log.error("HermesSpawnHandler: delegate_task failed: %s", e)
-                return None
-        else:
-            _log.info("HermesSpawnHandler: no delegate_fn, agent %s registered (goal not dispatched)",
-                      agent_id[:8])
+        try:
+            result = self.delegate_fn(goal=goal, context=context)
+            if inspect.isawaitable(result):
+                result = await result
+            agent_id = self._extract_agent_id(result) or fallback_agent_id
+            _log.info("HermesSpawnHandler: delegate_task returned for %s", agent_id[:8])
+            return agent_id
+        except Exception as e:
+            _log.error("HermesSpawnHandler: delegate_task failed: %s", e)
+            return None
 
-        return agent_id
+    def _extract_agent_id(self, result: Any) -> Optional[str]:
+        """从 delegate_task 返回值中提取 agent id。"""
+        if not result:
+            return None
+        if isinstance(result, str):
+            return result
+        if isinstance(result, dict):
+            for key in ("agent_id", "id", "task_id", "request_id"):
+                value = result.get(key)
+                if value:
+                    return str(value)
+        for key in ("agent_id", "id", "task_id", "request_id"):
+            value = getattr(result, key, None)
+            if value:
+                return str(value)
+        return None
 
 
 def create_default_spawn_handler(db, mode: str = "mock") -> BaseSpawnHandler:

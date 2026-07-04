@@ -8,8 +8,8 @@ Ontology 关系自动发现 — 从知识条目共现提取 concept→concept �
 1. 遍历所有知识条目的 tags
 2. 当两个 ontology 概念作为 tag 在同一条知识中共同出现时，记录共现
 3. 高频共现 → 推断关系类型并写入 ontology_relations
-4. 关系类型推断: 同类型概念共现 → "related_to"; tool+technique → "implements";
-   vulnerability+technique → "exploits"; tool+vulnerability → "detects"
+4. 关系类型推断: 同类型概念共现 → "equivalent_to"; tool+technique → "implements";
+   vulnerability+technique → "exploits"; tool+vulnerability → "produces"
 
 用法:
     from src.ontology.discovery import discover_relations_from_cooccurrence
@@ -86,20 +86,8 @@ def discover_relations_from_cooccurrence(db) -> Dict[str, Any]:
         if data["count"] < MIN_COOCCURRENCE:
             continue
 
-        # 检查是否已有关系
         concept_a = name_to_id[name_a]
         concept_b = name_to_id[name_b]
-        existing = db.fetch_one(
-            """SELECT 1 FROM ontology_relations
-               WHERE from_concept_id = ? AND to_concept_id = ? AND relation_type = ?
-               OR from_concept_id = ? AND to_concept_id = ? AND relation_type = ?""",
-            (concept_a, concept_b, "composes", concept_b, concept_a, "composes"),
-        )
-        if existing:
-            skipped += 1
-            continue
-
-        # 推断关系类型
         type_a = concept_map[name_a]["concept_type"]
         type_b = concept_map[name_b]["concept_type"]
         relation_type = _infer_relation_type(type_a, type_b)
@@ -112,22 +100,33 @@ def discover_relations_from_cooccurrence(db) -> Dict[str, Any]:
             name_a, name_b, concept_a, concept_b, type_a, type_b, relation_type
         )
 
+        if _relation_exists(db, from_id, to_id, relation_type):
+            skipped += 1
+            continue
+
         # 写入关系
         rel_id = str(uuid.uuid4())
         confidence = min(1.0, 0.5 + data["count"] * 0.1)  # 共现越多置信度越高
 
-        db.execute(
-            """INSERT OR IGNORE INTO ontology_relations
+        cur = db.execute(
+            """INSERT INTO ontology_relations
                (relation_id, from_concept_id, to_concept_id, relation_type,
                 weight, confidence, evidence, source, co_occurrence_count, last_observed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'co_occurrence', ?, datetime('now'))""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'inferred', ?, datetime('now'))""",
             (
                 rel_id, from_id, to_id, relation_type,
                 round(data["count"] / 10, 2), confidence,
-                json.dumps({"co_occurrence": data["count"], "contexts": data["contexts"]}),
+                json.dumps({
+                    "method": "co_occurrence",
+                    "co_occurrence": data["count"],
+                    "contexts": data["contexts"],
+                }),
                 data["count"],
             ),
         )
+        if cur.rowcount != 1:
+            skipped += 1
+            continue
 
         discovered.append({
             "from": from_name,
@@ -158,9 +157,9 @@ def _infer_relation_type(type_a: str, type_b: str) -> Optional[str]:
     if "vulnerability" in types and "technique" in types:
         return "exploits"
 
-    # tool + vulnerability → detects/mitigates
+    # tool + vulnerability → produces (scanner produces vulnerability findings)
     if "tool" in types and "vulnerability" in types:
-        return "detects"
+        return "produces"
 
     # technique + technique → composes (组合使用)
     if type_a == "technique" and type_b == "technique":
@@ -203,8 +202,8 @@ def _determine_direction(name_a, name_b, id_a, id_b, type_a, type_b, relation_ty
             return name_a, name_b, id_a, id_b
         return name_b, name_a, id_b, id_a
 
-    # detects: tool → vulnerability
-    if relation_type == "detects":
+    # produces: tool/agent_role → technique/vulnerability
+    if relation_type == "produces" and "tool" in {type_a, type_b}:
         if type_a == "tool":
             return name_a, name_b, id_a, id_b
         return name_b, name_a, id_b, id_a
@@ -231,3 +230,24 @@ def _determine_direction(name_a, name_b, id_a, id_b, type_a, type_b, relation_ty
     if name_a <= name_b:
         return name_a, name_b, id_a, id_b
     return name_b, name_a, id_b, id_a
+
+
+def _relation_exists(db, from_id: str, to_id: str, relation_type: str) -> bool:
+    """检查关系是否已存在；对称关系同时检查反向。"""
+    symmetric = {"composes", "equivalent_to", "conflicts_with"}
+    if relation_type in symmetric:
+        row = db.fetch_one(
+            """SELECT 1 FROM ontology_relations
+               WHERE relation_type = ?
+                 AND ((from_concept_id = ? AND to_concept_id = ?)
+                      OR (from_concept_id = ? AND to_concept_id = ?))""",
+            (relation_type, from_id, to_id, to_id, from_id),
+        )
+    else:
+        row = db.fetch_one(
+            """SELECT 1 FROM ontology_relations
+               WHERE from_concept_id = ? AND to_concept_id = ?
+                 AND relation_type = ?""",
+            (from_id, to_id, relation_type),
+        )
+    return row is not None

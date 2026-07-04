@@ -116,6 +116,8 @@ def infer_transitive_relations(db, relation_type: str = "depends_on") -> List[Di
     for row in rows:
         a_id = row["a"]
         c_id = row["c"]
+        if a_id == c_id:
+            continue
 
         existing = db.fetch_one(
             "SELECT 1 FROM ontology_relations WHERE from_concept_id = ? AND to_concept_id = ? AND relation_type = ?",
@@ -124,13 +126,14 @@ def infer_transitive_relations(db, relation_type: str = "depends_on") -> List[Di
         if existing:
             continue
 
-        db.execute(
-            """INSERT OR IGNORE INTO ontology_relations
+        cur = db.execute(
+            """INSERT INTO ontology_relations
                (relation_id, from_concept_id, to_concept_id, relation_type, confidence, source)
                VALUES (?, ?, ?, ?, 0.6, 'inferred')""",
             (str(uuid.uuid4()), a_id, c_id, relation_type),
         )
-        inferred.append({"from": a_id[:8], "to": c_id[:8]})
+        if cur.rowcount == 1:
+            inferred.append({"from": a_id[:8], "to": c_id[:8]})
 
     db.conn.commit()
     _log.info("infer_transitive: %d new relations", len(inferred))
