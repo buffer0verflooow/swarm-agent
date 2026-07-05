@@ -11,6 +11,16 @@ from .governance.engine import (
 from .governance.wisdom import distill_wisdom
 from .governance.verification import auto_enqueue_validations, process_validation_queue
 from .governance.tfidf_cluster import build_tfidf_similarity_graph, run_tfidf_clustering
+from .governance.bounty import (
+    create_finding_hypothesis,
+    seed_finding_hypotheses_from_vulnerabilities,
+    record_gate_result,
+    evaluate_hypothesis_gates,
+    record_negative_knowledge,
+    rank_hypotheses_by_roi,
+    get_negative_knowledge,
+    bounty_loop_summary,
+)
 from .ontology.inference import (
     discover_concepts_from_tasks, register_concepts, infer_transitive_relations,
     suggest_merges, detect_concept_drift, run_ontology_maintenance,
@@ -18,13 +28,11 @@ from .ontology.inference import (
 from .ontology.discovery import discover_relations_from_cooccurrence
 from .agents.capture import (
     CaptureContext, CaptureSource, capture, capture_from_run, is_worth_capturing,
+    record_raw_agent_event, update_raw_agent_event,
 )
 from .agents.retrieval import (
     search, search_by_tags, get_active_rules, get_similar,
     build_context_injection, select_best_strategy, query, knowledge_summary,
-)
-from .agents.extractor import (
-    extract_knowledge_from_text, chunk_article, classify_knowledge_type,
 )
 from .swarm.spawn_handler import BaseSpawnHandler, MockSpawnHandler, HermesSpawnHandler
 from .swarm.work_queue import (
@@ -37,11 +45,13 @@ from .swarm.model_config import (
     assign_task_model_profile, resolve_task_model_profile,
     record_swarm_event, build_run_summary,
 )
+from .swarm.artifacts import verify_artifact_path, verify_artifacts, record_artifact_verification
 from .swarm.worker import SwarmWorker, build_task_context, normalize_executor_result
 from .swarm.run_manager import (
     create_swarm_run, seed_swarm_run, create_seeded_swarm_run,
-    build_seed_tasks,
+    build_seed_tasks, default_role_counts,
 )
+from .swarm.runner import SwarmRunner, RunnerResult, adapt_executor_factory
 from .swarm.client_api import (
     submit_swarm_task, refresh_run_status, get_swarm_status,
     get_swarm_result, wait_for_swarm_result,
@@ -58,6 +68,9 @@ __all__ = [
     "distill_wisdom",
     # Verification
     "auto_enqueue_validations", "process_validation_queue",
+    "create_finding_hypothesis", "seed_finding_hypotheses_from_vulnerabilities",
+    "record_gate_result", "evaluate_hypothesis_gates", "record_negative_knowledge",
+    "rank_hypotheses_by_roi", "get_negative_knowledge", "bounty_loop_summary",
     # TF-IDF Clustering
     "build_tfidf_similarity_graph", "run_tfidf_clustering",
     # Ontology
@@ -66,11 +79,10 @@ __all__ = [
     "discover_relations_from_cooccurrence",
     # Capture (write)
     "CaptureContext", "CaptureSource", "capture", "capture_from_run", "is_worth_capturing",
+    "record_raw_agent_event", "update_raw_agent_event",
     # Retrieval (read)
     "search", "search_by_tags", "get_active_rules", "get_similar",
     "build_context_injection", "select_best_strategy", "query", "knowledge_summary",
-    # Extractor (legacy)
-    "extract_knowledge_from_text", "chunk_article", "classify_knowledge_type",
     # Spawn Handler
     "BaseSpawnHandler", "MockSpawnHandler", "HermesSpawnHandler",
     # Work Market
@@ -80,9 +92,11 @@ __all__ = [
     "list_model_profiles", "get_model_profile", "upsert_model_profile",
     "assign_task_model_profile", "resolve_task_model_profile",
     "record_swarm_event", "build_run_summary",
+    "verify_artifact_path", "verify_artifacts", "record_artifact_verification",
     "SwarmWorker", "build_task_context", "normalize_executor_result",
     "create_swarm_run", "seed_swarm_run", "create_seeded_swarm_run",
-    "build_seed_tasks",
+    "build_seed_tasks", "default_role_counts",
+    "SwarmRunner", "RunnerResult", "adapt_executor_factory",
     "submit_swarm_task", "refresh_run_status", "get_swarm_status",
     "get_swarm_result", "wait_for_swarm_result",
 ]

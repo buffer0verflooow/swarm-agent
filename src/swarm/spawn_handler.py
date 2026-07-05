@@ -120,10 +120,11 @@ class HermesSpawnHandler(BaseSpawnHandler):
             "   python3 ~/workspace/research/swarm-knowledge/capture.py "
             "  --content '发现描述' --agent '{agent_label}' "
             "  --source task_result --run-id '{run_id}' --task-id '{parent_task_id}' "
-            "  --tags 'recon,scan'\n"
+            "  --tags 'recon,scan' --force-capture\n"
             "3. 完成任务后用 agent_worker.py --complete-task-id <task_id> --content '结果摘要' 标记完成\n"
             "4. 如果发现高价值目标(开放端口/漏洞)，capture 会自动发布市场任务并触发 spawn\n"
-            "5. 每30秒发心跳: lc.beat(current_task_id=..., load=0.5)"
+            "5. 如果声称生成文件，必须在 complete 时追加 --artifact <共享路径>，父进程会校验文件存在、非空和 sha256\n"
+            "6. 每30秒发心跳: lc.beat(current_task_id=..., load=0.5)"
         ),
         "exploiter": (
             "你是蜂群 exploiter agent。你的任务是利用以下发现:\n"
@@ -136,8 +137,8 @@ class HermesSpawnHandler(BaseSpawnHandler):
             "--run-id '{run_id}' --agent '{agent_label}' --role exploiter --claim-only\n"
             "1. 基于上下文中的漏洞发现，尝试利用\n"
             "2. 使用 sqlmap/metasploit/burpsuite 等工具\n"
-            "3. 每个利用尝试通过 capture.py 写入知识库\n"
-            "4. 完成任务后用 agent_worker.py --complete-task-id <task_id> --content '结果摘要' 标记完成\n"
+            "3. 每个利用尝试通过 capture.py --force-capture 写入知识库\n"
+            "4. 完成任务后用 agent_worker.py --complete-task-id <task_id> --content '结果摘要' 标记完成；若有文件追加 --artifact <共享路径>\n"
             "5. 利用成功后标记为 vulnerability 类型\n"
             "6. chain_depth={chain_depth}, 不超过 max_chain_depth={max_chain_depth}"
         ),
@@ -152,8 +153,8 @@ class HermesSpawnHandler(BaseSpawnHandler):
             "--run-id '{run_id}' --agent '{agent_label}' --role analyst --claim-only\n"
             "1. 对发现的端点/服务进行深度分析\n"
             "2. 反编译/反汇编/代码审计\n"
-            "3. 分析结果通过 capture.py 写入知识库\n"
-            "4. 完成任务后用 agent_worker.py --complete-task-id <task_id> --content '结果摘要' 标记完成\n"
+            "3. 分析结果通过 capture.py --force-capture 写入知识库\n"
+            "4. 完成任务后用 agent_worker.py --complete-task-id <task_id> --content '结果摘要' 标记完成；若有文件追加 --artifact <共享路径>\n"
             "5. 发现攻击模式后 capture 会自动发布 exploiter 市场任务"
         ),
         "reporter": (
@@ -167,8 +168,8 @@ class HermesSpawnHandler(BaseSpawnHandler):
             "--run-id '{run_id}' --agent '{agent_label}' --role reporter --claim-only\n"
             "1. 从知识库检索所有相关发现\n"
             "2. 按严重程度排序，生成结构化报告\n"
-            "3. 报告通过 capture.py 写入知识库 (knowledge_type=strategy)\n"
-            "4. 完成任务后用 agent_worker.py --complete-task-id <task_id> --content '报告摘要' 标记完成"
+            "3. 报告通过 capture.py --force-capture 写入知识库 (knowledge_type=strategy)\n"
+            "4. 完成任务后用 agent_worker.py --complete-task-id <task_id> --content '报告摘要' --artifact <共享报告路径> 标记完成；没有通过父进程 artifact 校验的文件不算已生成"
         ),
     }
 

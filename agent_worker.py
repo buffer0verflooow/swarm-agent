@@ -34,7 +34,8 @@ sys.path.insert(0, str(REPO))
 from src import SwarmDB
 from src.agents.capture import CaptureContext, CaptureSource, capture
 from src.swarm.model_config import record_swarm_event, resolve_task_model_profile
-from src.swarm.work_queue import complete_work_task
+from src.swarm.artifacts import verify_artifacts
+from src.swarm.work_queue import complete_work_task, fail_work_task
 from src.swarm.worker import SwarmWorker
 
 
@@ -43,6 +44,10 @@ def _ensure_schema(db: SwarmDB) -> None:
         db.init()
         return
     if not db.fetch_one("SELECT name FROM sqlite_master WHERE type='table' AND name='model_profiles'"):
+        db.init()
+    if not db.fetch_one("SELECT name FROM sqlite_master WHERE type='table' AND name='raw_agent_events'"):
+        db.init()
+    if not db.fetch_one("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_artifacts'"):
         db.init()
 
 
@@ -132,6 +137,29 @@ def complete_manual_task(db: SwarmDB, args) -> Dict[str, Any]:
     if args.intent:
         metadata["intent"] = args.intent
 
+    artifact_verification = {"ok": True, "artifacts": [], "verified": [], "failed": []}
+    if args.artifact:
+        artifact_verification = verify_artifacts(
+            db,
+            run_id=args.run_id,
+            task_id=args.complete_task_id,
+            agent_id=args.agent,
+            artifacts=args.artifact,
+        )
+        if not artifact_verification["ok"]:
+            fail_work_task(db, args.complete_task_id, "artifact verification failed")
+            record_swarm_event(
+                db,
+                run_id=args.run_id,
+                event_type="artifact_verification_failed",
+                source=args.client_source,
+                agent_id=args.agent,
+                task_id=args.complete_task_id,
+                content="artifact verification failed",
+                metadata={"artifacts": artifact_verification["artifacts"]},
+            )
+            raise RuntimeError("artifact verification failed")
+
     entry_id = None
     if args.content.strip():
         ctx = CaptureContext(
@@ -154,6 +182,7 @@ def complete_manual_task(db: SwarmDB, args) -> Dict[str, Any]:
             "worker_role": args.role,
             "client_source": args.client_source,
             "model_profile": model_profile or {},
+            "artifact_verification": artifact_verification,
         },
         token_cost=args.token_cost,
     )
@@ -170,6 +199,7 @@ def complete_manual_task(db: SwarmDB, args) -> Dict[str, Any]:
             "model_profile": model_profile or {},
             "token_cost": args.token_cost,
             "tags": tags,
+            "artifact_verification": artifact_verification,
         },
     )
     return {
@@ -178,6 +208,7 @@ def complete_manual_task(db: SwarmDB, args) -> Dict[str, Any]:
         "captured_entry_id": entry_id,
         "event_id": event_id,
         "model_profile": model_profile,
+        "artifact_verification": artifact_verification,
     }
 
 
@@ -196,6 +227,7 @@ async def main_async() -> int:
     parser.add_argument("--title", default="", help="Title override for completion capture")
     parser.add_argument("--intent", default="", help="Intent override for completion capture")
     parser.add_argument("--token-cost", type=int, default=0, help="Token cost to add when completing a task")
+    parser.add_argument("--artifact", action="append", default=[], help="Required artifact path to verify before completing")
     parser.add_argument("--max-tasks", type=int, default=1, help="Maximum tasks to execute")
     parser.add_argument("--poll-interval", type=float, default=2.0, help="Idle poll interval in seconds")
     args = parser.parse_args()

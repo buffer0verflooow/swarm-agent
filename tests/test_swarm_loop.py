@@ -46,17 +46,25 @@ from src.swarm.model_config import (
     record_swarm_event,
     upsert_model_profile,
 )
+from src.swarm.artifacts import verify_artifacts
 from src.swarm.client_api import (
     get_swarm_result,
     get_swarm_status,
     submit_swarm_task,
 )
-from src.swarm.worker import SwarmWorker
+from src.swarm.worker import SwarmWorker, build_task_context
 from src.swarm.run_manager import create_seeded_swarm_run
+from src.swarm.runner import SwarmRunner, adapt_executor_factory
 from src.swarm.orchestrator import SwarmOrchestrator, POLL_SPAWN_SEC, POLL_HEARTBEAT_SEC
 from src.swarm.spawn_handler import HermesSpawnHandler
 from src.governance.engine import check_and_decay
 from src.governance.verification import auto_enqueue_validations, process_validation_queue
+from src.governance.bounty import (
+    create_finding_hypothesis,
+    get_negative_knowledge,
+    rank_hypotheses_by_roi,
+    record_gate_result,
+)
 from src.ontology.discovery import discover_relations_from_cooccurrence
 from src.ontology.inference import infer_transitive_relations
 
@@ -282,6 +290,40 @@ def test_work_market_claims_are_atomic():
     print("  ✅ work market supports dedupe and single-consumer claims")
 
 
+def test_work_market_generations_follow_parent_tasks():
+    """测试 follow-up task 继承 parent iteration + 1"""
+    print("\n=== Test: Work Market Generation ===")
+    db = setup_test_db()
+    run_id = create_test_run(db)
+    parent_id = publish_work_task(
+        db,
+        run_id,
+        "scan",
+        "scanner",
+        "Seed generation",
+        source_agent="system",
+        generation=2,
+    )
+    child_id = publish_work_task(
+        db,
+        run_id,
+        "analyze",
+        "analyst",
+        "Follow parent generation",
+        parent_task_id=parent_id,
+        context_entry_ids=["entry-generation"],
+        source_agent="scanner-001",
+    )
+    parent = db.fetch_one("SELECT iteration FROM agent_tasks WHERE task_id=?", (parent_id,))
+    child = db.fetch_one("SELECT iteration, focus_params FROM agent_tasks WHERE task_id=?", (child_id,))
+    assert parent["iteration"] == 2
+    assert child["iteration"] == 3
+    assert json.loads(child["focus_params"])["generation"] == 3
+
+    db.close()
+    print("  ✅ follow-up work increments generation")
+
+
 def test_model_profiles_are_swarm_owned():
     """测试模型配置由蜂群维护，并随任务领取返回给外部调用端"""
     print("\n=== Test: Swarm-owned Model Profiles ===")
@@ -371,6 +413,8 @@ def test_seeded_swarm_run_publishes_market_tasks():
     assert run_id
     assert len(result["seeded_tasks"]) >= 5
     assert all(t.get("model_profile") for t in result["seeded_tasks"])
+    assert result["min_agents_by_role"]["scanner"] >= 4
+    assert result["max_agents"] == 8
 
     tasks = db.fetch_all(
         """SELECT task_id, task_type, required_role, parent_task_id, agent_id,
@@ -385,6 +429,9 @@ def test_seeded_swarm_run_publishes_market_tasks():
     assert all(t["parent_task_id"] is None for t in tasks)
     assert all((t["signal_key"] or "").startswith("seed:") for t in tasks)
     assert all("phase" not in json.loads(t["focus_params"]) for t in tasks)
+    run_config = json.loads(db.fetch_one("SELECT config FROM swarm_runs WHERE run_id=?", (run_id,))["config"])
+    assert run_config["min_agents_by_role"]["scanner"] >= 4
+    assert run_config["generation"] == 1
 
     duplicate = create_seeded_swarm_run(
         db,
@@ -398,6 +445,51 @@ def test_seeded_swarm_run_publishes_market_tasks():
 
     db.close()
     print("  ✅ run manager seeds independent market tasks")
+
+
+async def test_swarm_runner_executes_multi_worker_pool():
+    """测试自动 runner 按 min_agents_by_role 启动 worker 池并消费任务市场"""
+    print("\n=== Test: Swarm Runner ===")
+    db = setup_test_db()
+    result = create_seeded_swarm_run(
+        db,
+        swarm_name="runner-swarm",
+        intent="analyze",
+        target_type="webapp",
+        target_id="runner.example.test",
+        profile="balanced",
+        config={"min_agents_by_role": {"analyst": 2, "reporter": 1}, "max_agents": 3},
+    )
+    run_id = result["run_id"]
+    total_tasks = db.fetch_one("SELECT COUNT(*) AS c FROM agent_tasks WHERE run_id=?", (run_id,))["c"]
+    assert total_tasks >= 3
+
+    def executor_factory(role, agent_id):
+        def executor(task, context):
+            assert "Task" in context
+            return {
+                "capture": False,
+                "content": f"{agent_id} completed {task['task_type']}",
+                "token_cost": 1,
+            }
+        return executor
+
+    runner = SwarmRunner(db)
+    run_result = await runner.run_until_idle(
+        run_id,
+        adapt_executor_factory(executor_factory),
+        max_rounds=10,
+        idle_round_limit=1,
+    )
+
+    assert run_result.workers == 3
+    assert run_result.processed == total_tasks
+    assert run_result.task_counts.get("completed") == total_tasks
+    live = get_live_agents(db, run_id)
+    assert len(live) == 3
+
+    db.close()
+    print("  ✅ runner starts multiple workers and completes market tasks")
 
 
 def test_start_swarm_cli_outputs_seeded_run():
@@ -758,6 +850,54 @@ async def test_swarm_worker_executes_market_task():
     print("  ✅ worker claims, executes, captures, and completes market work")
 
 
+async def test_worker_normalizes_task_result_intent():
+    """测试 worker/capture 会把 run/task intent 映射为合法 knowledge_intent"""
+    print("\n=== Test: Worker Intent Normalization ===")
+    db = setup_test_db()
+    run_id = create_test_run(db)
+    task_id = publish_work_task(
+        db,
+        run_id,
+        "scan",
+        "scanner",
+        "Map authorized surface for intent normalization test",
+        context_entry_ids=[],
+        source_agent="system",
+        intent="recon",
+        priority=80,
+    )
+
+    def executor(task, context):
+        return {
+            "content": (
+                "Scanner observed demo.example has HTTPS service metadata and "
+                "documented endpoint structure. This is simulated recon output "
+                "with concrete fields for capture normalization testing."
+            ),
+            "intent": "recon",
+            "tags": ["intent_normalization"],
+            "token_cost": 1,
+        }
+
+    worker = SwarmWorker(db, run_id, "scanner-intent-001", "scanner", executor=executor)
+    result = await worker.run_once()
+    assert result and result.status == "completed"
+    assert result.captured_entry_id
+
+    entry = db.fetch_one(
+        "SELECT knowledge_intent, tags FROM knowledge_entries WHERE id=?",
+        (result.captured_entry_id,),
+    )
+    assert entry["knowledge_intent"] == "enumerate"
+    assert "intent_normalization" in json.loads(entry["tags"])
+
+    task = db.fetch_one("SELECT status FROM agent_tasks WHERE task_id=?", (task_id,))
+    assert task["status"] == "completed"
+
+    db.close()
+    print("  ✅ worker maps recon/report/analyze style intents before capture")
+
+
 def test_agent_worker_cli_manual_claim_complete():
     """测试 CLI claim-only + complete-task 手动闭环"""
     print("\n=== Test: Agent Worker CLI ===")
@@ -1041,6 +1181,132 @@ def test_capture_cli_merges_tags_before_store():
     print("  ✅ CLI tags are merged before enrichment/corroboration")
 
 
+def test_capture_preserves_filtered_raw_events_for_handoff():
+    """测试低信号内容不进 KB 时仍进入 raw_agent_events 并进入 handoff context"""
+    print("\n=== Test: Lossless Raw Capture ===")
+    db = setup_test_db()
+    run_id = create_test_run(db)
+    AgentLifecycle(db, "raw-agent-001", run_id).register(role="analyst")
+
+    short_ctx = CaptureContext(
+        source=CaptureSource.CONVERSATION,
+        content="too short",
+        source_agent="raw-agent-001",
+        source_run_id=run_id,
+        metadata={"phase": "raw-test"},
+    )
+    entry_id = capture(db, short_ctx)
+    assert entry_id is None
+
+    raw = db.fetch_one(
+        "SELECT capture_status, filter_reason, content FROM raw_agent_events WHERE run_id=?",
+        (run_id,),
+    )
+    assert raw["capture_status"] == "filtered"
+    assert raw["filter_reason"] == "content_too_short"
+    assert raw["content"] == "too short"
+
+    task_id = publish_work_task(
+        db,
+        run_id,
+        "analyze",
+        "analyst",
+        "Use raw handoff event",
+        source_agent="raw-agent-001",
+    )
+    task = dict(db.fetch_one("SELECT * FROM agent_tasks WHERE task_id=?", (task_id,)))
+    context = build_task_context(db, task)
+    assert "Recent Raw Handoff Events" in context
+    assert "too short" in context
+
+    forced_ctx = CaptureContext(
+        source=CaptureSource.CONVERSATION,
+        content="forced",
+        source_agent="raw-agent-001",
+        source_run_id=run_id,
+        metadata={"force_capture": True, "title": "forced short capture"},
+    )
+    forced_id = capture(db, forced_ctx)
+    assert forced_id
+    forced = db.fetch_one("SELECT title FROM knowledge_entries WHERE id=?", (forced_id,))
+    assert forced["title"] == "forced short capture"
+
+    db.close()
+    print("  ✅ filtered findings are preserved as raw handoff events")
+
+
+async def test_worker_artifact_verification_blocks_missing_files():
+    """测试 worker 不信任 agent 的文件声明，缺失 artifact 会使任务失败"""
+    print("\n=== Test: Worker Artifact Verification ===")
+    db = setup_test_db()
+    run_id = create_test_run(db)
+    task_id = publish_work_task(
+        db,
+        run_id,
+        "report",
+        "reporter",
+        "Produce a report artifact",
+        source_agent="system",
+        priority=80,
+    )
+
+    missing_path = "/tmp/swarm-artifact-does-not-exist.md"
+    if os.path.exists(missing_path):
+        os.remove(missing_path)
+
+    def executor(task, context):
+        return {
+            "content": "Reporter claims a final report was written.",
+            "artifacts": [missing_path],
+        }
+
+    worker = SwarmWorker(db, run_id, "reporter-artifact-001", "reporter", executor=executor)
+    result = await worker.run_once()
+    assert result and result.status == "failed"
+    assert result.error == "artifact verification failed"
+
+    task = db.fetch_one("SELECT status FROM agent_tasks WHERE task_id=?", (task_id,))
+    assert task["status"] == "failed"
+    artifact = db.fetch_one(
+        "SELECT status, declared_path FROM agent_artifacts WHERE task_id=?",
+        (task_id,),
+    )
+    assert artifact["status"] == "missing"
+    assert artifact["declared_path"] == missing_path
+
+    db.close()
+    print("  ✅ missing required artifacts fail the task")
+
+
+def test_artifact_verifier_records_verified_files():
+    """测试 parent runtime 能 stat/hash 可见 artifact"""
+    print("\n=== Test: Artifact Verification Success ===")
+    db = setup_test_db()
+    run_id = create_test_run(db)
+    task_id = publish_work_task(db, run_id, "report", "reporter", "Verify artifact", source_agent="system")
+    path = f"/tmp/swarm-artifact-{uuid.uuid4().hex}.txt"
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("verified artifact content\n")
+
+    result = verify_artifacts(
+        db,
+        run_id=run_id,
+        task_id=task_id,
+        agent_id="reporter-artifact-002",
+        artifacts=[path],
+    )
+    assert result["ok"]
+    assert result["verified"][0]["status"] == "verified"
+    assert result["verified"][0]["size_bytes"] > 0
+    stored = db.fetch_one("SELECT status, sha256 FROM agent_artifacts WHERE task_id=?", (task_id,))
+    assert stored["status"] == "verified"
+    assert len(stored["sha256"]) == 64
+
+    os.remove(path)
+    db.close()
+    print("  ✅ verified artifacts are recorded with sha256")
+
+
 def test_hermes_spawn_handler():
     """测试 Hermes handler 模板格式化 + delegate 返回 agent_id"""
     print("\n=== Test: Hermes Spawn Handler ===")
@@ -1182,8 +1448,11 @@ def test_validation_queue_scoped_and_not_requeued():
 
     result = auto_enqueue_validations(db, run_id)
     assert result["enqueued"] == 1
+    assert result["hypotheses"] == 1
     queued_runs = [r["run_id"] for r in db.fetch_all("SELECT run_id FROM validation_queue")]
     assert queued_runs == [run_id]
+    hypothesis_count = db.fetch_one("SELECT COUNT(*) AS c FROM finding_hypotheses WHERE run_id=?", (run_id,))["c"]
+    assert hypothesis_count == 1
 
     processed = process_validation_queue(db)
     assert processed["processed"] == 1
@@ -1194,6 +1463,110 @@ def test_validation_queue_scoped_and_not_requeued():
 
     db.close()
     print("  ✅ validation queue is run-scoped and one-shot")
+
+
+def test_bounty_hypothesis_gates_and_negative_knowledge():
+    """测试赏金候选默认是假设，门控全过才验证，失败门控沉淀为负知识"""
+    print("\n=== Test: Bounty Knowledge Loop ===")
+    db = setup_test_db()
+    run_id = create_test_run(db)
+
+    validated_entry_id = str(uuid.uuid4())
+    db.execute(
+        """INSERT INTO knowledge_entries
+           (id, level, knowledge_type, content, title, source_agent, source_run_id,
+            domain, knowledge_intent, tags, trust_vector)
+           VALUES (?, 2, 'vulnerability', ?, 'candidate auth bypass', 'analyst-a', ?,
+                   'security', 'attack', ?,
+                   '{"logic_soundness":0.8,"base_confidence":0.75,"cross_validation":0.4}')""",
+        (
+            validated_entry_id,
+            "WCF method accepts attacker-controlled URL and executes update flow with evidence.",
+            run_id,
+            json.dumps(["auth_bypass", "ssrf", "oem_agent"]),
+        ),
+    )
+
+    hypothesis = create_finding_hypothesis(
+        db,
+        validated_entry_id,
+        target_id="oem-agent",
+        program="vendor-bounty",
+        vulnerability_class="auth-bypass",
+        severity="high",
+        scope_status="in_scope",
+        reachability="low_priv",
+        expected_payout=5000,
+        estimated_hours=20,
+        competition_factor=0.8,
+        rationale="OEM agent is in scope and runs privileged local services.",
+    )
+    assert hypothesis["validation_status"] == "hypothesis"
+    assert len(hypothesis["gates"]) == 6
+
+    ranked = rank_hypotheses_by_roi(db)
+    assert ranked and ranked[0]["hypothesis_id"] == hypothesis["hypothesis_id"]
+    assert ranked[0]["roi_score"] == 200.0
+
+    final = None
+    for gate in ("poc_exists", "clean_repro", "impactful", "low_priv_reachable", "in_scope", "deduplicated"):
+        final = record_gate_result(
+            db,
+            hypothesis["hypothesis_id"],
+            gate,
+            "pass",
+            evidence=f"{gate} verified in clean test environment",
+            verified_by="validator-a",
+        )
+
+    assert final["status"] == "validated"
+    row = db.fetch_one("SELECT level, validation_count FROM knowledge_entries WHERE id=?", (validated_entry_id,))
+    assert row["level"] >= 3
+    assert row["validation_count"] == 1
+
+    refuted_entry_id = str(uuid.uuid4())
+    db.execute(
+        """INSERT INTO knowledge_entries
+           (id, level, knowledge_type, content, title, source_agent, source_run_id,
+            domain, knowledge_intent, tags, trust_vector)
+           VALUES (?, 2, 'vulnerability', ?, 'candidate named pipe bug', 'analyst-b', ?,
+                   'security', 'attack', ?,
+                   '{"logic_soundness":0.7,"base_confidence":0.7,"cross_validation":0.2}')""",
+        (
+            refuted_entry_id,
+            "Named pipe looked exploitable during SYSTEM-context analysis.",
+            run_id,
+            json.dumps(["named_pipe", "lpe", "oem_agent"]),
+        ),
+    )
+    refuted = create_finding_hypothesis(
+        db,
+        refuted_entry_id,
+        target_id="oem-agent",
+        program="vendor-bounty",
+        vulnerability_class="lpe",
+        severity="medium",
+        expected_payout=2500,
+        estimated_hours=16,
+    )
+    failed = record_gate_result(
+        db,
+        refuted["hypothesis_id"],
+        "low_priv_reachable",
+        "fail",
+        evidence="Standard user cannot open the named pipe; only SYSTEM can reach it.",
+        verified_by="validator-b",
+    )
+
+    assert failed["status"] == "negative_knowledge"
+    negatives = get_negative_knowledge(db, target_id="oem-agent", reason_type="privilege_unreachable")
+    assert len(negatives) == 1
+    assert "Standard user" in negatives[0]["details"]
+    ce = db.fetch_one("SELECT COUNT(*) AS c FROM counter_examples WHERE knowledge_id=?", (refuted_entry_id,))
+    assert ce["c"] == 1
+
+    db.close()
+    print("  ✅ hypothesis gates promote validated findings and preserve negative knowledge")
 
 
 def test_transitive_inference_persists_only_new_edges():
@@ -1361,21 +1734,28 @@ def main():
     test_lifecycle()
     test_spawn()
     test_work_market_claims_are_atomic()
+    test_work_market_generations_follow_parent_tasks()
     test_model_profiles_are_swarm_owned()
     test_seeded_swarm_run_publishes_market_tasks()
+    asyncio.run(test_swarm_runner_executes_multi_worker_pool())
     test_start_swarm_cli_outputs_seeded_run()
     test_client_api_submits_task_and_fetches_result()
     test_swarmctl_cli_task_submit_status_result()
     test_swarmctl_cli_models_event_summary()
     asyncio.run(test_swarm_worker_executes_market_task())
+    asyncio.run(test_worker_normalizes_task_result_intent())
     test_agent_worker_cli_manual_claim_complete()
     test_capture_triggers_spawn()
     test_extractor_sql_generation_sqlite()
     test_capture_cli_merges_tags_before_store()
+    test_capture_preserves_filtered_raw_events_for_handoff()
+    asyncio.run(test_worker_artifact_verification_blocks_missing_files())
+    test_artifact_verifier_records_verified_files()
     test_hermes_spawn_handler()
     test_governance_decay_counter_examples()
     test_ontology_discovery_persists()
     test_validation_queue_scoped_and_not_requeued()
+    test_bounty_hypothesis_gates_and_negative_knowledge()
     test_transitive_inference_persists_only_new_edges()
     asyncio.run(test_orchestrator_work_market_expands_missing_roles())
 

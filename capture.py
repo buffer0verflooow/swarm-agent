@@ -14,6 +14,7 @@
 """
 
 import argparse
+import hashlib
 import sys
 from pathlib import Path
 
@@ -35,6 +36,7 @@ def main():
     parser.add_argument("--title", default="", help="Entry title override")
     parser.add_argument("--phase", default="", help="Experiment phase")
     parser.add_argument("--tags", default="", help="Comma-separated tags")
+    parser.add_argument("--force-capture", action="store_true", help="Force promotion into knowledge_entries")
     parser.add_argument("--db", default=str(REPO / "swarm_knowledge.db"), help="DB path")
     args = parser.parse_args()
 
@@ -51,6 +53,8 @@ def main():
     db = SwarmDB(args.db)
     if not db.fetch_one("SELECT name FROM sqlite_master WHERE type='table' AND name='knowledge_entries'"):
         db.init()
+    if not db.fetch_one("SELECT name FROM sqlite_master WHERE type='table' AND name='raw_agent_events'"):
+        db.init()
 
     tags = [t.strip() for t in args.tags.split(",") if t.strip()]
 
@@ -63,6 +67,7 @@ def main():
         metadata={
             "phase": args.phase,
             "tags": tags,
+            "force_capture": args.force_capture,
             **({"intent": args.intent} if args.intent else {}),
             **({"title": args.title} if args.title else {}),
             "captured_by": "capture.py",
@@ -73,7 +78,15 @@ def main():
     if entry_id:
         print(f"CAPTURED:{entry_id[:8]}")
     else:
-        print("FILTERED:low_signal")
+        content_hash = hashlib.sha256(args.content.encode()).hexdigest()[:16]
+        raw = db.fetch_one(
+            """SELECT event_id FROM raw_agent_events
+               WHERE content_hash = ? AND source_agent = ?
+               ORDER BY created_at DESC LIMIT 1""",
+            (content_hash, args.agent),
+        )
+        suffix = f":RAW:{raw['event_id'][:8]}" if raw else ""
+        print(f"FILTERED:low_signal{suffix}")
 
     db.close()
 

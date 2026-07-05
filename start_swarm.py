@@ -26,6 +26,10 @@ def _ensure_schema(db: SwarmDB) -> None:
         return
     if not db.fetch_one("SELECT name FROM sqlite_master WHERE type='table' AND name='model_profiles'"):
         db.init()
+    if not db.fetch_one("SELECT name FROM sqlite_master WHERE type='table' AND name='raw_agent_events'"):
+        db.init()
+    if not db.fetch_one("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_artifacts'"):
+        db.init()
 
 
 def main() -> None:
@@ -59,6 +63,7 @@ def main() -> None:
     run_id = result["run_id"]
     print(f"RUN:{run_id}")
     print(f"Seeded tasks: {len(result['seeded_tasks'])}")
+    print(f"Min agents: {json.dumps(result.get('min_agents_by_role', {}), ensure_ascii=False)}")
     for task in result["seeded_tasks"]:
         profile = task.get("model_profile") or {}
         model = (
@@ -70,14 +75,17 @@ def main() -> None:
             f"{task['task_id'][:8]} model={model} {task['name']}"
         )
 
-    roles = sorted({task["required_role"] for task in result["seeded_tasks"]})
+    role_counts = result.get("min_agents_by_role") or {
+        role: 1 for role in sorted({task["required_role"] for task in result["seeded_tasks"]})
+    }
     print("\nWorker claim commands:")
-    for role in roles:
-        print(
-            "python3 "
-            f"{REPO / 'agent_worker.py'} --db {args.db} --run-id {run_id} "
-            f"--agent {role}-<id> --role {role} --claim-only"
-        )
+    for role, count in sorted(role_counts.items()):
+        for idx in range(1, int(count) + 1):
+            print(
+                "python3 "
+                f"{REPO / 'agent_worker.py'} --db {args.db} --run-id {run_id} "
+                f"--agent {role}-{idx:02d} --role {role} --claim-only"
+            )
 
 
 if __name__ == "__main__":

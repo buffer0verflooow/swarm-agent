@@ -22,6 +22,7 @@ from .model_config import (
     record_swarm_event,
     resolve_task_model_profile,
 )
+from .artifacts import verify_artifacts
 from .work_queue import claim_work_tasks, complete_work_task, fail_work_task
 from ..agents.capture import CaptureContext, CaptureSource, capture
 
@@ -47,6 +48,16 @@ def _loads_json(value: Any, default: Any) -> Any:
         return json.loads(value)
     except (json.JSONDecodeError, TypeError):
         return default
+
+
+def _normalize_artifacts(value: Any) -> List[Any]:
+    if not value:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, (str, dict)):
+        return [value]
+    return []
 
 
 def normalize_executor_result(result: Any) -> Dict[str, Any]:
@@ -75,6 +86,7 @@ def normalize_executor_result(result: Any) -> Dict[str, Any]:
             "content": content,
             "metadata": metadata,
             "tags": result.get("tags", []),
+            "artifacts": _normalize_artifacts(result.get("artifacts")),
             "title": result.get("title", ""),
             "intent": result.get("intent", ""),
             "token_cost": int(result.get("token_cost") or 0),
@@ -89,6 +101,7 @@ def normalize_executor_result(result: Any) -> Dict[str, Any]:
         "content": content,
         "metadata": {},
         "tags": [],
+        "artifacts": [],
         "title": "",
         "intent": "",
         "token_cost": 0,
@@ -204,6 +217,31 @@ class SwarmWorker:
                 self.lifecycle.beat(current_task_id=None, load=0.0)
                 return WorkerResult(task_id=task_id, status="failed", error=error)
 
+            artifact_verification = {"ok": True, "artifacts": [], "verified": [], "failed": []}
+            if normalized["artifacts"]:
+                artifact_verification = verify_artifacts(
+                    self.db,
+                    run_id=self.run_id,
+                    task_id=task_id,
+                    agent_id=self.agent_id,
+                    artifacts=normalized["artifacts"],
+                )
+                if not artifact_verification["ok"]:
+                    error = "artifact verification failed"
+                    fail_work_task(self.db, task_id, error)
+                    record_swarm_event(
+                        self.db,
+                        run_id=self.run_id,
+                        event_type="artifact_verification_failed",
+                        source="swarm_worker",
+                        agent_id=self.agent_id,
+                        task_id=task_id,
+                        content=error,
+                        metadata={"artifacts": artifact_verification["artifacts"]},
+                    )
+                    self.lifecycle.beat(current_task_id=None, load=0.0)
+                    return WorkerResult(task_id=task_id, status="failed", error=error)
+
             captured_entry_id = None
             if normalized["capture"] and normalized["content"].strip():
                 captured_entry_id = self._capture_task_result(task, normalized)
@@ -214,6 +252,7 @@ class SwarmWorker:
                 "worker_agent": self.agent_id,
                 "worker_role": self.role,
                 "model_profile": task.get("model_profile") or {},
+                "artifact_verification": artifact_verification,
             }
             complete_work_task(
                 self.db,
@@ -233,6 +272,7 @@ class SwarmWorker:
                     "captured_entry_id": captured_entry_id,
                     "model_profile": task.get("model_profile") or {},
                     "token_cost": normalized["token_cost"],
+                    "artifact_verification": artifact_verification,
                 },
             )
             self.lifecycle.beat(current_task_id=None, load=0.0)
@@ -306,12 +346,24 @@ def build_task_context(db, task: Dict[str, Any], max_entries: int = 5) -> str:
     context_ids = focus.get("context_entry_ids", [])
     if not isinstance(context_ids, list):
         context_ids = []
+    run_id = task.get("run_id")
 
     parts = [
         f"## Task\n{task.get('task_type')} for {task.get('required_role') or 'any-role'}",
         f"Intent: {task.get('task_intent') or ''}",
         f"Reason: {focus.get('reason') or ''}",
     ]
+
+    if run_id:
+        try:
+            run = db.fetch_one(
+                "SELECT conversation_summary FROM swarm_runs WHERE run_id = ?",
+                (run_id,),
+            )
+            if run and run["conversation_summary"]:
+                parts.append("\n## Run Summary\n" + run["conversation_summary"][:1200])
+        except Exception:
+            pass
 
     if context_ids:
         parts.append("\n## Context Entries")
@@ -330,6 +382,31 @@ def build_task_context(db, task: Dict[str, Any], max_entries: int = 5) -> str:
                     (row["content"] or "")[:800],
                 ])
             )
+
+    if run_id:
+        try:
+            raw_events = db.fetch_all(
+                """SELECT source_agent, source, capture_status, filter_reason,
+                          content, created_at
+                   FROM raw_agent_events
+                   WHERE run_id = ?
+                   ORDER BY created_at DESC
+                   LIMIT ?""",
+                (run_id, max_entries),
+            )
+        except Exception:
+            raw_events = []
+        if raw_events:
+            parts.append("\n## Recent Raw Handoff Events")
+            for event in reversed(raw_events):
+                status = event["capture_status"]
+                reason = f" reason={event['filter_reason']}" if event["filter_reason"] else ""
+                parts.append(
+                    "\n".join([
+                        f"### {event['created_at']} {event['source_agent']} {event['source']} status={status}{reason}",
+                        (event["content"] or "")[:500],
+                    ])
+                )
 
     return "\n\n".join(parts)
 

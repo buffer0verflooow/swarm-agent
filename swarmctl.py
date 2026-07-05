@@ -44,6 +44,10 @@ def _ensure_schema(db: SwarmDB) -> None:
         return
     if not db.fetch_one("SELECT name FROM sqlite_master WHERE type='table' AND name='model_profiles'"):
         db.init()
+    if not db.fetch_one("SELECT name FROM sqlite_master WHERE type='table' AND name='raw_agent_events'"):
+        db.init()
+    if not db.fetch_one("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_artifacts'"):
+        db.init()
 
 
 def _json_arg(value: str, name: str) -> Dict[str, Any]:

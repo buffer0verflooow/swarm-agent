@@ -29,6 +29,7 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
+from .bounty import create_finding_hypothesis
 from .engine import boost_pheromone, compute_trust_score
 
 _log = logging.getLogger("swarm_knowledge.verification")
@@ -81,6 +82,7 @@ def auto_enqueue_validations(db, run_id: str = None) -> Dict[str, Any]:
 
     enqueued = 0
     skipped = 0
+    hypotheses = 0
 
     for entry in candidates:
         trust = compute_trust_score(entry["trust_vector"] or "{}")
@@ -115,10 +117,20 @@ def auto_enqueue_validations(db, run_id: str = None) -> Dict[str, Any]:
         )
         enqueued += 1
 
+        if entry["knowledge_type"] == "vulnerability":
+            created = create_finding_hypothesis(
+                db,
+                entry["id"],
+                created_by="auto-verification",
+                rationale="Auto-created when vulnerability entry entered validation_queue.",
+            )
+            if created:
+                hypotheses += 1
+
     db.conn.commit()
-    _log.info("verification_enqueue: %d enqueued, %d skipped (trust too low)",
-              enqueued, skipped)
-    return {"enqueued": enqueued, "skipped": skipped}
+    _log.info("verification_enqueue: %d enqueued, %d skipped, %d hypotheses",
+              enqueued, skipped, hypotheses)
+    return {"enqueued": enqueued, "skipped": skipped, "hypotheses": hypotheses}
 
 
 def process_validation_queue(db) -> Dict[str, Any]:

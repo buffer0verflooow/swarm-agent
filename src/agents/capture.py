@@ -71,14 +71,36 @@ class CaptureContext:
 
 def is_worth_capturing(ctx: CaptureContext) -> bool:
     """判断一条内容是否值得进入知识库"""
+    return assess_capture_signal(ctx)["worth_capturing"]
+
+
+def assess_capture_signal(ctx: CaptureContext) -> Dict[str, Any]:
+    """Return the signal assessment used before promoting raw events to KB."""
     content = ctx.content.strip()
+    if ctx.metadata.get("force_capture"):
+        return {
+            "worth_capturing": True,
+            "reason": "forced_capture",
+            "signal_count": _count_signals(ctx),
+            "min_signal": 0,
+        }
     if len(content) < 60:            # 太短 → 噪声
-        return False
+        return {
+            "worth_capturing": False,
+            "reason": "content_too_short",
+            "signal_count": _count_signals(ctx),
+            "min_signal": 0,
+        }
     if content.count('\n') < 1 and len(content) < 150:
         # 极短单行 → 大概率是闲聊，除非来源是高价值源
         if ctx.source not in (CaptureSource.TASK_RESULT, CaptureSource.USER_CORRECTION,
                                CaptureSource.ERROR_RESOLUTION, CaptureSource.ARTICLE):
-            return False
+            return {
+                "worth_capturing": False,
+                "reason": "short_single_line_low_value_source",
+                "signal_count": _count_signals(ctx),
+                "min_signal": 1,
+            }
 
     # 不同来源有不同的信号阈值
     thresholds = {
@@ -94,7 +116,13 @@ def is_worth_capturing(ctx: CaptureContext) -> bool:
 
     min_signal = thresholds.get(ctx.source, 1)
     signals = _count_signals(ctx)
-    return signals >= min_signal
+    worth = signals >= min_signal
+    return {
+        "worth_capturing": worth,
+        "reason": "" if worth else "low_signal",
+        "signal_count": signals,
+        "min_signal": min_signal,
+    }
 
 
 def _count_signals(ctx: CaptureContext) -> int:
@@ -143,6 +171,76 @@ def _has_numbers(text: str) -> bool:
     return bool(re.search(r'\d+', text))
 
 
+def _table_exists(db, table_name: str) -> bool:
+    return bool(db.fetch_one("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,)))
+
+
+def _ensure_raw_event_schema(db) -> None:
+    if not _table_exists(db, "raw_agent_events"):
+        db.init()
+
+
+def record_raw_agent_event(
+    db,
+    ctx: CaptureContext,
+    signal_count: int = 0,
+    capture_status: str = "received",
+    filter_reason: str = "",
+    knowledge_entry_id: Optional[str] = None,
+    commit: bool = True,
+) -> str:
+    """Persist the unfiltered agent emission before any KB promotion decision."""
+    _ensure_raw_event_schema(db)
+    event_id = str(uuid.uuid4())
+    content_hash = hashlib.sha256(ctx.content.encode()).hexdigest()[:16]
+    db.execute(
+        """INSERT INTO raw_agent_events
+           (event_id, run_id, task_id, source_agent, source, content, content_hash,
+            metadata, signal_count, capture_status, filter_reason, knowledge_entry_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            event_id,
+            ctx.source_run_id,
+            ctx.source_task_id,
+            ctx.source_agent,
+            ctx.source.value if isinstance(ctx.source, CaptureSource) else str(ctx.source),
+            ctx.content,
+            content_hash,
+            json.dumps(ctx.metadata or {}, ensure_ascii=False, sort_keys=True, default=str),
+            int(signal_count or 0),
+            capture_status,
+            filter_reason,
+            knowledge_entry_id,
+        ),
+    )
+    if commit:
+        db.conn.commit()
+    return event_id
+
+
+def update_raw_agent_event(
+    db,
+    event_id: Optional[str],
+    capture_status: str,
+    filter_reason: str = "",
+    knowledge_entry_id: Optional[str] = None,
+    commit: bool = True,
+) -> None:
+    if not event_id:
+        return
+    db.execute(
+        """UPDATE raw_agent_events
+           SET capture_status = ?,
+               filter_reason = ?,
+               knowledge_entry_id = COALESCE(?, knowledge_entry_id),
+               updated_at = datetime('now')
+           WHERE event_id = ?""",
+        (capture_status, filter_reason, knowledge_entry_id, event_id),
+    )
+    if commit:
+        db.conn.commit()
+
+
 def _metadata_tags(metadata: Dict[str, Any]) -> List[str]:
     """Normalize explicit tags supplied by CLI or agent metadata."""
     raw_tags = metadata.get("tags", [])
@@ -178,6 +276,36 @@ def _merge_tags(*groups: List[str]) -> List[str]:
 # ============================================================================
 # Classifier — DIKW 分级 + 领域 + 类型
 # ============================================================================
+
+VALID_KNOWLEDGE_INTENTS = {"understand", "attack", "defend", "enumerate", "optimize"}
+
+INTENT_ALIASES = {
+    "recon": "enumerate",
+    "scan": "enumerate",
+    "scanning": "enumerate",
+    "enumeration": "enumerate",
+    "discover": "enumerate",
+    "discovery": "enumerate",
+    "analyze": "understand",
+    "analysis": "understand",
+    "report": "understand",
+    "custom": "understand",
+    "exploit": "attack",
+    "exploitation": "attack",
+    "attack": "attack",
+    "defense": "defend",
+    "mitigate": "defend",
+    "mitigation": "defend",
+    "optimize": "optimize",
+}
+
+
+def _normalize_knowledge_intent(intent: str = None, default: str = "understand") -> str:
+    value = str(intent or "").strip().lower().replace("-", "_")
+    if value in VALID_KNOWLEDGE_INTENTS:
+        return value
+    return INTENT_ALIASES.get(value, default)
+
 
 def classify_capture(ctx: CaptureContext) -> Dict[str, Any]:
     """
@@ -245,7 +373,7 @@ def _infer_intent(ctx: CaptureContext, ktype: str) -> str:
     if ctx.source == CaptureSource.ERROR_RESOLUTION:
         return "optimize"
     if ctx.source == CaptureSource.TASK_RESULT:
-        return ctx.metadata.get("intent", "enumerate")
+        return _normalize_knowledge_intent(ctx.metadata.get("intent"), "enumerate")
 
     # 类型推断
     intent_map = {
@@ -257,7 +385,7 @@ def _infer_intent(ctx: CaptureContext, ktype: str) -> str:
         "observation": "enumerate",
         "fact": "understand",
     }
-    return intent_map.get(ktype, "understand")
+    return _normalize_knowledge_intent(intent_map.get(ktype), "understand")
 
 
 # ============================================================================
@@ -339,12 +467,30 @@ def capture(
     Returns:
         入库的 entry_id，如果被信号过滤器拒绝则返回 None
     """
-    # 1. 信号过滤
-    if not is_worth_capturing(ctx):
+    # 1. 无损原始事件记录。KB promotion 可以过滤，agent handoff 不能丢原文。
+    assessment = assess_capture_signal(ctx)
+    raw_event_id = record_raw_agent_event(
+        db,
+        ctx,
+        signal_count=assessment["signal_count"],
+        capture_status="received",
+        filter_reason=assessment["reason"],
+        commit=True,
+    )
+
+    # 2. 信号过滤
+    if not assessment["worth_capturing"]:
         _log.debug("capture: filtered out (low signal) source=%s len=%d", ctx.source, len(ctx.content))
+        update_raw_agent_event(
+            db,
+            raw_event_id,
+            capture_status="filtered",
+            filter_reason=assessment["reason"],
+            commit=True,
+        )
         return None
 
-    # 2. 分类
+    # 3. 分类
     if auto_classify:
         classification = classify_capture(ctx)
     else:
@@ -357,7 +503,7 @@ def capture(
             "confidence": 0.5,
         }
 
-    # 3. 去重检查 — 用 content_hash 精确匹配
+    # 4. 去重检查 — 用 content_hash 精确匹配
     content_hash = hashlib.sha256(ctx.content.encode()).hexdigest()[:16]
     existing = db.fetch_one(
         "SELECT id, level, trust_vector FROM knowledge_entries WHERE content_hash = ? AND status = 'active'",
@@ -386,15 +532,23 @@ def capture(
             (existing["id"],),
         )
         db.conn.commit()
+        update_raw_agent_event(
+            db,
+            raw_event_id,
+            capture_status="duplicate",
+            filter_reason="duplicate_content_hash",
+            knowledge_entry_id=existing["id"],
+            commit=True,
+        )
         return existing["id"]
 
-    # 4. 关联已有知识
+    # 5. 关联已有知识
     enrichment = enrich_with_context(db, ctx, classification)
 
-    # 5. 生成标题
+    # 6. 生成标题
     title = ctx.metadata.get("title", _generate_title(ctx, classification))
 
-    # 6. 写入
+    # 7. 写入
     entry_id = str(uuid.uuid4())
 
     trust_vector = json.dumps({
@@ -433,7 +587,7 @@ def capture(
         (entry_id, title, ctx.content[:500]),
     )
 
-    # 7. 写入 lineage (source_type 需要映射)
+    # 8. 写入 lineage (source_type 需要映射)
     lineage_source_map = {
         CaptureSource.TASK_RESULT: "agent_execution",
         CaptureSource.USER_CORRECTION: "human_feedback",
@@ -463,7 +617,7 @@ def capture(
         ),
     )
 
-    # 8. 如果是用户纠正且存在冲突条目 → 自动记录 counter_example
+    # 9. 如果是用户纠正且存在冲突条目 → 自动记录 counter_example
     if ctx.source == CaptureSource.USER_CORRECTION and enrichment["potential_conflicts"]:
         for conflict in enrichment["potential_conflicts"]:
             db.execute(
@@ -478,10 +632,10 @@ def capture(
                 ),
             )
 
-    # 8.5 发布蜂群任务市场信号，并为缺少容量的角色触发 spawn
+    # 9.5 发布蜂群任务市场信号，并为缺少容量的角色触发 spawn
     _emit_swarm_signals(db, entry_id, classification, ctx)
 
-    # 8.6 token 估算 — 基于内容长度估算 token 消耗
+    # 9.6 token 估算 — 基于内容长度估算 token 消耗
     estimated_tokens = _estimate_tokens(ctx.content, classification)
     if ctx.source_run_id and ctx.source_task_id:
         db.execute(
@@ -493,10 +647,18 @@ def capture(
             (estimated_tokens, ctx.source_run_id),
         )
 
-    # 8.7 自动 corroborating — 同 domain + 同 tags 的已有条目自动建立 lineage 关联
+    # 9.7 自动 corroborating — 同 domain + 同 tags 的已有条目自动建立 lineage 关联
     _auto_corroborate(db, entry_id, classification)
 
     db.conn.commit()
+    update_raw_agent_event(
+        db,
+        raw_event_id,
+        capture_status="captured",
+        filter_reason="",
+        knowledge_entry_id=entry_id,
+        commit=True,
+    )
 
     _log.info(
         "capture: stored entry_id=%s source=%s type=%s level=L%d domain=%s",

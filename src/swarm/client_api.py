@@ -101,6 +101,8 @@ def submit_swarm_task(
         "status": "running",
         "event_id": event_id,
         "seeded_tasks": result["seeded_tasks"],
+        "min_agents_by_role": result.get("min_agents_by_role", {}),
+        "max_agents": result.get("max_agents"),
     }
 
 

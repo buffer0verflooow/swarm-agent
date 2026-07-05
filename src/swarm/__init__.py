@@ -15,11 +15,13 @@ from .model_config import (
     assign_task_model_profile, resolve_task_model_profile,
     record_swarm_event, build_run_summary,
 )
+from .artifacts import verify_artifact_path, verify_artifacts, record_artifact_verification
 from .worker import SwarmWorker, build_task_context, normalize_executor_result
 from .run_manager import (
     create_swarm_run, seed_swarm_run, create_seeded_swarm_run,
-    build_seed_tasks,
+    build_seed_tasks, default_role_counts,
 )
+from .runner import SwarmRunner, RunnerResult, adapt_executor_factory
 from .client_api import (
     submit_swarm_task, refresh_run_status, get_swarm_status,
     get_swarm_result, wait_for_swarm_result,
@@ -37,9 +39,11 @@ __all__ = [
     "list_model_profiles", "get_model_profile", "upsert_model_profile",
     "assign_task_model_profile", "resolve_task_model_profile",
     "record_swarm_event", "build_run_summary",
+    "verify_artifact_path", "verify_artifacts", "record_artifact_verification",
     "SwarmWorker", "build_task_context", "normalize_executor_result",
     "create_swarm_run", "seed_swarm_run", "create_seeded_swarm_run",
-    "build_seed_tasks",
+    "build_seed_tasks", "default_role_counts",
+    "SwarmRunner", "RunnerResult", "adapt_executor_factory",
     "submit_swarm_task", "refresh_run_status", "get_swarm_status",
     "get_swarm_result", "wait_for_swarm_result",
     "SwarmOrchestrator", "create_orchestrator",

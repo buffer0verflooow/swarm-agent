@@ -17,6 +17,26 @@ from .work_queue import publish_work_task
 
 VALID_INTENTS = {"recon", "exploit", "analyze", "defend", "report", "custom"}
 VALID_TARGET_TYPES = {"ip", "binary", "apk", "webapp", "domain", "network", "unknown"}
+DEFAULT_MAX_AGENTS = 8
+
+
+def default_role_counts(intent: str, profile: str = "balanced") -> Dict[str, int]:
+    """Return conservative minimum worker counts for a run profile."""
+    if intent in {"recon", "custom"}:
+        if profile == "breadth":
+            return {"scanner": 4, "analyst": 2, "exploiter": 1, "reporter": 1}
+        if profile == "depth":
+            return {"scanner": 1, "analyst": 3, "exploiter": 2, "reporter": 1}
+        return {"scanner": 3, "analyst": 2, "exploiter": 1, "reporter": 1}
+    if intent == "analyze":
+        return {"analyst": 3, "reporter": 1}
+    if intent == "exploit":
+        return {"analyst": 2, "exploiter": 2, "reporter": 1}
+    if intent == "defend":
+        return {"analyst": 2, "reporter": 1}
+    if intent == "report":
+        return {"reporter": 2}
+    return {"custom": 2, "reporter": 1}
 
 
 def create_swarm_run(
@@ -119,13 +139,22 @@ def create_seeded_swarm_run(
     objective: str = "",
 ) -> Dict[str, Any]:
     """Create a run and seed the work market in one transaction."""
+    role_counts = (config or {}).get("min_agents_by_role") or default_role_counts(intent, profile)
+    max_agents = int((config or {}).get("max_agents") or DEFAULT_MAX_AGENTS)
     rid = create_swarm_run(
         db,
         swarm_name=swarm_name,
         intent=intent,
         target_type=target_type,
         target_id=target_id,
-        config={"seed_profile": profile, "client_objective": objective, **(config or {})},
+        config={
+            "seed_profile": profile,
+            "client_objective": objective,
+            "min_agents_by_role": role_counts,
+            "max_agents": max_agents,
+            "generation": 1,
+            **(config or {}),
+        },
         commit=False,
     )
     tasks = seed_swarm_run(
@@ -139,7 +168,7 @@ def create_seeded_swarm_run(
         commit=False,
     )
     db.conn.commit()
-    return {"run_id": rid, "seeded_tasks": tasks}
+    return {"run_id": rid, "seeded_tasks": tasks, "min_agents_by_role": role_counts, "max_agents": max_agents}
 
 
 def build_seed_tasks(

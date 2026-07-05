@@ -58,6 +58,7 @@ def publish_work_task(
     metadata: Optional[Dict[str, Any]] = None,
     model_profile_id: Optional[str] = None,
     signal_key: Optional[str] = None,
+    generation: Optional[int] = None,
     commit: bool = True,
 ) -> str:
     """
@@ -72,6 +73,10 @@ def publish_work_task(
     role = required_role or ROLE_BY_TASK_TYPE.get(task_type, "custom")
     profile = get_model_profile(db, role, profile_id=model_profile_id)
     selected_profile_id = profile["profile_id"] if profile else None
+    if generation is None and parent_task_id:
+        parent = db.fetch_one("SELECT iteration FROM agent_tasks WHERE task_id = ?", (parent_task_id,))
+        generation = int(parent["iteration"] or 1) + 1 if parent else 1
+    task_generation = max(1, int(generation or 1))
     context_ids = _normalize_context_ids(context_entry_ids)
     key = signal_key or build_signal_key(
         task_type=task_type,
@@ -87,14 +92,15 @@ def publish_work_task(
         "source_agent": source_agent,
         "signal_key": key,
         "model_profile_id": selected_profile_id,
+        "generation": task_generation,
         **(metadata or {}),
     }
 
     cur = db.execute(
         """INSERT OR IGNORE INTO agent_tasks
            (task_id, run_id, agent_id, parent_task_id, task_type, task_intent,
-            focus_params, status, required_role, priority, signal_key, model_profile_id)
-           VALUES (?, ?, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)""",
+            focus_params, iteration, status, required_role, priority, signal_key, model_profile_id)
+           VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)""",
         (
             task_id,
             run_id,
@@ -102,6 +108,7 @@ def publish_work_task(
             task_type,
             intent or task_type,
             _json_text(focus),
+            task_generation,
             role,
             max(0, min(100, int(priority))),
             key,

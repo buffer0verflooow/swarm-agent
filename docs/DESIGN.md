@@ -69,6 +69,28 @@ Agent 执行任务
     └─→ 为后续任务提供最优策略
 ```
 
+## 漏洞赏金知识循环
+
+DIKW 回答“这条知识处于什么可信层级”，漏洞赏金还需要回答“这条候选发现是否值得提交”。系统把这部分做成覆盖在 `knowledge_entries` 上的工作流层：
+
+```
+knowledge_entries(type=vulnerability)
+    │
+    ▼
+finding_hypotheses
+    │
+    ├─→ ROI 排序: expected_payout / estimated_hours * competition_factor
+    │
+    ├─→ validation gates:
+    │     poc_exists → clean_repro → impactful → low_priv_reachable → in_scope → deduplicated
+    │
+    ├─ 全部通过 → validation_status=validated, knowledge_entries.level 至少提升到 L3
+    │
+    └─ 任一失败 → negative_knowledge + counter_examples，供下次 campaign 避免重复死路
+```
+
+这不是替代 DIKW，而是把文章里的 hallucination bin/Gate 0-3 思路接进当前知识库。新发现默认是 `hypothesis`，只有经过门控证据才是 `validated`。低权限不可达、不可复现、无安全影响、出 scope、重复报告等失败结论会沉淀为 `negative_knowledge`。
+
 ## 核心 API
 
 ### 知识写入 (Agent 侧)
@@ -120,6 +142,41 @@ tools = db.fetch_all("""
 """)
 ```
 
+### 赏金假设门控
+
+```python
+from src import (
+    create_finding_hypothesis,
+    record_gate_result,
+    rank_hypotheses_by_roi,
+    get_negative_knowledge,
+)
+
+# 1. 把漏洞知识条目转为“候选报告假设”
+hypothesis = create_finding_hypothesis(
+    db,
+    knowledge_id="entry-uuid",
+    target_id="vendor-agent",
+    program="vendor-bounty",
+    vulnerability_class="lpe",
+    expected_payout=5000,
+    estimated_hours=20,
+    competition_factor=0.8,
+)
+
+# 2. 逐个记录门控证据
+record_gate_result(db, hypothesis["hypothesis_id"], "poc_exists", "pass", evidence="PoC runs")
+record_gate_result(db, hypothesis["hypothesis_id"], "clean_repro", "pass", evidence="clean VM snapshot")
+record_gate_result(db, hypothesis["hypothesis_id"], "impactful", "pass", evidence="standard user to SYSTEM")
+record_gate_result(db, hypothesis["hypothesis_id"], "low_priv_reachable", "pass", evidence="lowpriv user confirmed")
+record_gate_result(db, hypothesis["hypothesis_id"], "in_scope", "pass", evidence="program scope page")
+record_gate_result(db, hypothesis["hypothesis_id"], "deduplicated", "pass", evidence="no duplicate in KB")
+
+# 3. 下一轮 campaign 前先看 ROI 和负结果
+ranked = rank_hypotheses_by_roi(db)
+dead_ends = get_negative_knowledge(db, target_id="vendor-agent")
+```
+
 ## 与 reverse-engine 的对应关系
 
 | reverse-engine 表 | Swarm Knowledge 表 | 差异 |
@@ -137,6 +194,9 @@ tools = db.fetch_all("""
 | *(不存在)* | `ontology_concepts` | 新增：显式本体 |
 | *(不存在)* | `ontology_relations` | 新增：关系网络 |
 | *(不存在)* | `ontology_instances` | 新增：运行时实例 |
+| *(不存在)* | `finding_hypotheses` | 新增：漏洞赏金候选发现门控 |
+| *(不存在)* | `finding_validation_gates` | 新增：PoC/复现/影响/权限/scope/去重证据 |
+| *(不存在)* | `negative_knowledge` | 新增：不可提交、不可达、不可复现等负结果 |
 
 ## 演化路线图
 
@@ -170,12 +230,15 @@ swarm-knowledge/
 │   ├── 004_verification_wisdom.sql # 验证队列 + wisdom 字段
 │   ├── 005_spawn_claims.sql        # spawn claim 恢复时间戳
 │   ├── 006_work_market.sql         # agent_tasks 共享任务市场
-│   └── 007_model_profiles.sql      # 蜂群自维护模型 profile + 对话事件
+│   ├── 007_model_profiles.sql      # 蜂群自维护模型 profile + 对话事件
+│   ├── 008_raw_events_artifacts.sql # 原始事件 + artifact 父进程校验
+│   └── 009_bounty_knowledge_loop.sql # 赏金假设门控 + 负结果
 ├── src/
 │   ├── __init__.py
 │   ├── governance/
 │   │   ├── __init__.py
 │   │   ├── engine.py               # DIKW 提升 + 衰减 + 交叉验证
+│   │   ├── bounty.py               # 赏金假设门控 + ROI + negative knowledge
 │   │   └── clustering.py           # 三层链接 + Louvain
 │   ├── ontology/
 │   │   ├── __init__.py
