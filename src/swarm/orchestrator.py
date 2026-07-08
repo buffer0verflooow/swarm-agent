@@ -30,6 +30,7 @@ from typing import Any, Callable, Dict, List, Optional
 from .lifecycle import cleanup_stale_agents, get_live_agents
 from .spawner import (
     request_spawn,
+    build_spawn_dedup_key,
     claim_spawn_requests,
     mark_spawn_fulfilled,
     mark_spawn_rejected,
@@ -100,27 +101,28 @@ class SwarmOrchestrator:
 
             # ① Spawn 处理 (每 POLL_SPAWN_SEC)
             if now - last_spawn >= POLL_SPAWN_SEC:
-                await self._tick_spawn(run_id)
+                await self._safe_tick("spawn", self._tick_spawn, run_id)
+                await self._safe_tick("stigmergy_spawn", self._tick_stigmergy_spawn, run_id)
                 last_spawn = now
 
             # ② 任务市场维护 (每 POLL_WORK_SEC)
             if now - last_work >= POLL_WORK_SEC:
-                await self._tick_work_market(run_id)
+                await self._safe_tick("work_market", self._tick_work_market, run_id)
                 last_work = now
 
             # ③ 心跳清理 (每 POLL_HEARTBEAT_SEC)
             if now - last_heartbeat >= POLL_HEARTBEAT_SEC:
-                await self._tick_heartbeat(run_id)
+                await self._safe_tick("heartbeat", self._tick_heartbeat, run_id)
                 last_heartbeat = now
 
             # ④ 治理循环 (每 POLL_GOVERNANCE_SEC)
             if now - last_governance >= POLL_GOVERNANCE_SEC:
-                await self._tick_governance(run_id)
+                await self._safe_tick("governance", self._tick_governance, run_id)
                 last_governance = now
 
             # ⑤ Power schedule (每 POLL_POWER_SCHEDULE_SEC)
             if now - last_power >= POLL_POWER_SCHEDULE_SEC:
-                await self._tick_power_schedule(run_id)
+                await self._safe_tick("power_schedule", self._tick_power_schedule, run_id)
                 last_power = now
 
             await asyncio.sleep(tick_interval)
@@ -132,6 +134,12 @@ class SwarmOrchestrator:
         self._stopped = True
 
     # ── Private ticks ──
+
+    async def _safe_tick(self, tick_name: str, tick_fn: Callable, run_id: str):
+        try:
+            await tick_fn(run_id)
+        except Exception:
+            _log.exception("Orchestrator tick failed: %s run_id=%s", tick_name, run_id)
 
     async def _tick_spawn(self, run_id: str):
         """处理待处理的 spawn 请求"""
@@ -169,7 +177,18 @@ class SwarmOrchestrator:
                 agent_id = await self.spawn_handler(req, context)
 
                 if agent_id:
-                    mark_spawn_fulfilled(self.db, req["request_id"], agent_id)
+                    fulfilled = mark_spawn_fulfilled(
+                        self.db,
+                        req["request_id"],
+                        agent_id,
+                        req.get("claim_token") or req.get("claimed_by"),
+                    )
+                    if not fulfilled:
+                        _log.warning(
+                            "Spawn: fulfillment rejected for %s due to claim token mismatch",
+                            req["request_id"],
+                        )
+                        continue
                     self._log_behavior(run_id, "emergence",
                         f"{req['requesting_agent']} 触发生成 {req['requested_role']} ({agent_id[:8]})")
                     _log.info("Spawn: fulfilled %s → %s (%s)",
@@ -179,6 +198,112 @@ class SwarmOrchestrator:
             except Exception as e:
                 _log.error("Spawn: failed for %s: %s", req["requested_role"], e)
                 mark_spawn_rejected(self.db, req["request_id"], str(e))
+
+    # Stigmergy auto-spawn — 新漏洞/高价值发现 → 自动 spawn analyst/exploiter
+    MAX_AUTO_SPAWN_PER_TICK = 3  # 每次 tick 最多自动 spawn 数
+    AUTO_SPAWN_ROLE_MAP = {
+        "vulnerability": ["analyst", "exploiter"],
+        "vulnerability HIGH": ["exploiter"],
+        "observation L3+": ["analyst"],
+    }
+
+    async def _tick_stigmergy_spawn(self, run_id: str):
+        """检查新增的高价值知识条目，自动生成 spawn 请求。
+
+        Phase 间 stigmergy: P1 发现漏洞 → 自动 spawn P2 analyst；analyst 确认漏洞 → 自动 spawn P3 exploiter。
+        只在 live agent 未达上限时触发。
+        """
+        live_count = len(get_live_agents(self.db, run_id))
+        available = MAX_AGENTS_PER_RUN - live_count
+        if available <= 0:
+            return
+
+        # 查询本 run 新增的未处理高价值发现
+        new_entries = self.db.fetch_all(
+            """SELECT id, title, knowledge_type, level, domain, tags
+               FROM knowledge_entries
+               WHERE source_run_id = ?
+                 AND status = 'active'
+                 AND (knowledge_type = 'vulnerability' OR level >= 3)
+               ORDER BY level DESC, created_at DESC
+               LIMIT ?""",
+            (run_id, self.MAX_AUTO_SPAWN_PER_TICK * 3),
+        )
+
+        spawned = 0
+        for entry in new_entries:
+            if spawned >= self.MAX_AUTO_SPAWN_PER_TICK:
+                break
+
+            # 决定 spawn 什么角色
+            roles_to_spawn = self._auto_spawn_roles(entry)
+            for role in roles_to_spawn:
+                if spawned >= self.MAX_AUTO_SPAWN_PER_TICK:
+                    break
+                reason = f"Stigmergy: 发现 [{entry['knowledge_type']}] L{entry['level']} '{entry['title'][:80]}'"
+                if self._active_stigmergy_spawn_exists(run_id, entry["id"], role, reason):
+                    continue
+                request_spawn(
+                    self.db,
+                    run_id=run_id,
+                    requesting_agent="stigmergy",
+                    requested_role=role,
+                    reason=reason,
+                    context_entry_ids=[entry["id"]],
+                    priority=80,  # 自动 spawn 高优先级
+                    commit=False,
+                )
+                spawned += 1
+
+        if spawned:
+            self.db.conn.commit()
+            _log.info("StigmergySpawn: auto-generated %d spawn(s) for run=%s", spawned, run_id)
+            self._log_behavior(run_id, "emergence",
+                f"Stigmergy 自动 spawn: {spawned} 个 agent 已入队")
+
+    def _auto_spawn_roles(self, entry: dict) -> list:
+        """根据知识条目类型决定应该 spawn 什么角色的 agent。"""
+        roles = set()
+        ktype = entry.get("knowledge_type", "")
+        level = entry.get("level", 1)
+
+        if ktype == "vulnerability":
+            roles.add("analyst")
+            if level >= 3:
+                roles.add("exploiter")
+        elif ktype == "observation" and level >= 3:
+            roles.add("analyst")
+        elif ktype == "pattern":
+            roles.add("analyst")
+
+        return list(roles)
+
+    def _active_stigmergy_spawn_exists(
+        self,
+        run_id: str,
+        entry_id: str,
+        role: str,
+        reason: str,
+    ) -> bool:
+        dedup_key = build_spawn_dedup_key(run_id, role, reason, [entry_id])
+        row = self.db.fetch_one(
+            """SELECT 1
+               FROM spawn_requests
+               WHERE run_id = ?
+                 AND requested_role = ?
+                 AND status IN ('pending', 'spawning')
+                 AND (
+                   dedup_key = ?
+                   OR EXISTS (
+                     SELECT 1
+                     FROM json_each(spawn_requests.context_entry_ids)
+                     WHERE json_each.value = ?
+                   )
+                 )
+               LIMIT 1""",
+            (run_id, role, dedup_key, entry_id),
+        )
+        return row is not None
 
     async def _tick_work_market(self, run_id: str):
         """

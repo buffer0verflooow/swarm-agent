@@ -192,9 +192,21 @@ def test_spawn():
     assert req_after["spawned_agent_id"] == "test-exploiter-001"
     print("  ✅ spawn fulfilled")
 
-    # 重复请求合并
-    for i in range(3):
-        request_spawn(db, run_id, "test-scanner-001", "reporter", f"dupe {i}", priority=50 + i)
+    # 重复请求合并: 新请求用 dedup_key 直接复用 pending 请求
+    dupe_reason = "same reporter duplicate"
+    first_dupe = request_spawn(db, run_id, "test-scanner-001", "reporter", dupe_reason, priority=50)
+    second_dupe = request_spawn(db, run_id, "test-scanner-001", "reporter", dupe_reason, priority=51)
+    assert first_dupe == second_dupe
+
+    # 模拟旧库里缺少 dedup_key 的重复 pending 行，验证 merge_duplicate_requests 会按新 key 合并
+    for i in range(2):
+        db.execute(
+            """INSERT INTO spawn_requests
+               (request_id, run_id, requesting_agent, requested_role, reason, context_entry_ids, priority)
+               VALUES (?, ?, 'test-scanner-001', 'reporter', ?, '[]', ?)""",
+            (str(uuid.uuid4()), run_id, dupe_reason, 52 + i),
+        )
+    db.conn.commit()
     merged = merge_duplicate_requests(db, run_id)
     assert merged == 2, f"expected 2 duplicate merges, got {merged}"
     print(f"  ✅ merged {merged} duplicate reporter requests")
@@ -1219,8 +1231,19 @@ def test_capture_preserves_filtered_raw_events_for_handoff():
     assert "Recent Raw Handoff Events" in context
     assert "too short" in context
 
-    forced_ctx = CaptureContext(
+    untrusted_forced_ctx = CaptureContext(
         source=CaptureSource.CONVERSATION,
+        content="forced",
+        source_agent="raw-agent-001",
+        source_run_id=run_id,
+        metadata={"force_capture": True, "title": "untrusted forced short capture"},
+    )
+    untrusted_forced_id = capture(db, untrusted_forced_ctx)
+    assert untrusted_forced_id is None
+    assert "force_capture" not in untrusted_forced_ctx.metadata
+
+    forced_ctx = CaptureContext(
+        source=CaptureSource.TASK_RESULT,
         content="forced",
         source_agent="raw-agent-001",
         source_run_id=run_id,

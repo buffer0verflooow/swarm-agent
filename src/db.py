@@ -81,8 +81,44 @@ class SwarmDB:
             self.conn.commit()
             _log.info("Applied migration: %s", mig.name)
 
+        self._ensure_spawn_request_schema()
         _log.info("Database initialized: %s (%d migrations)", self.db_path, len(migrations))
         return True
+
+    def _table_exists(self, table_name: str) -> bool:
+        row = self.fetch_one(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        )
+        return row is not None
+
+    def _column_exists(self, table_name: str, column_name: str) -> bool:
+        if not self._table_exists(table_name):
+            return False
+        return any(row["name"] == column_name for row in self.fetch_all(f"PRAGMA table_info({table_name})"))
+
+    def _ensure_spawn_request_schema(self) -> None:
+        """Apply idempotent spawn_requests schema fixes without new migrations."""
+        if not self._table_exists("spawn_requests"):
+            return
+
+        if not self._column_exists("spawn_requests", "claimed_by"):
+            self.conn.execute("ALTER TABLE spawn_requests ADD COLUMN claimed_by TEXT")
+        if not self._column_exists("spawn_requests", "dedup_key"):
+            self.conn.execute("ALTER TABLE spawn_requests ADD COLUMN dedup_key TEXT")
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sr_claimed_by ON spawn_requests(claimed_by)"
+        )
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sr_dedup_key ON spawn_requests(run_id, dedup_key)"
+        )
+        self.conn.execute(
+            """CREATE UNIQUE INDEX IF NOT EXISTS idx_sr_pending_dedup_unique
+               ON spawn_requests(run_id, dedup_key, status)
+               WHERE status = 'pending' AND dedup_key IS NOT NULL"""
+        )
+        self.conn.commit()
 
     @contextmanager
     def transaction(self):

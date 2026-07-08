@@ -25,9 +25,48 @@ Spawn 请求机制：子 Agent 写信号 → Orchestrator 异步实例化
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
+import sqlite3
 import uuid
 from typing import Any, Dict, List, Optional
+
+_log = logging.getLogger("swarm_knowledge.spawner")
+
+
+def _normalized_context_entry_ids(context_entry_ids: List[str] = None) -> List[str]:
+    if not context_entry_ids:
+        return []
+    return sorted({str(entry_id) for entry_id in context_entry_ids if entry_id})
+
+
+def _decode_context_entry_ids(context_entry_ids: Any) -> List[str]:
+    if isinstance(context_entry_ids, str):
+        try:
+            context_entry_ids = json.loads(context_entry_ids)
+        except (json.JSONDecodeError, TypeError):
+            return []
+    if isinstance(context_entry_ids, list):
+        return _normalized_context_entry_ids(context_entry_ids)
+    return []
+
+
+def build_spawn_dedup_key(
+    run_id: str,
+    requested_role: str,
+    reason: str,
+    context_entry_ids: List[str] = None,
+) -> str:
+    """Stable duplicate key for semantically identical pending spawn requests."""
+    payload = {
+        "run_id": run_id,
+        "requested_role": requested_role,
+        "reason": (reason or "").strip(),
+        "context_entry_ids": _normalized_context_entry_ids(context_entry_ids),
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def request_spawn(
@@ -73,24 +112,48 @@ def request_spawn(
     if max_chain_depth is None:
         max_chain_depth = 3  # MAX_CHAIN_DEPTH_DEFAULT
 
+    normalized_context_ids = _normalized_context_entry_ids(context_entry_ids)
+    dedup_key = build_spawn_dedup_key(run_id, requested_role, reason, normalized_context_ids)
+    existing = db.fetch_one(
+        """SELECT request_id FROM spawn_requests
+           WHERE run_id = ? AND dedup_key = ? AND status = 'pending'
+           LIMIT 1""",
+        (run_id, dedup_key),
+    )
+    if existing:
+        return existing["request_id"]
+
     ttl = max(1, int(ttl_minutes or 10))
     expires_modifier = f"+{ttl} minutes"
 
-    db.execute(
-        """INSERT INTO spawn_requests
-           (request_id, run_id, requesting_agent, parent_task_id,
-            requested_role, reason, context_entry_ids, priority, chain_depth, max_chain_depth, expires_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', ?))""",
-        (
-            req_id, run_id, requesting_agent, parent_task_id,
-            requested_role, reason,
-            json.dumps(context_entry_ids or []),
-            max(0, min(100, int(priority))),
-            max(0, int(chain_depth or 0)),
-            max(0, int(max_chain_depth)),
-            expires_modifier,
-        ),
-    )
+    try:
+        db.execute(
+            """INSERT INTO spawn_requests
+               (request_id, run_id, requesting_agent, parent_task_id,
+                requested_role, reason, context_entry_ids, dedup_key, priority,
+                chain_depth, max_chain_depth, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', ?))""",
+            (
+                req_id, run_id, requesting_agent, parent_task_id,
+                requested_role, reason,
+                json.dumps(normalized_context_ids),
+                dedup_key,
+                max(0, min(100, int(priority))),
+                max(0, int(chain_depth or 0)),
+                max(0, int(max_chain_depth)),
+                expires_modifier,
+            ),
+        )
+    except sqlite3.IntegrityError:
+        existing = db.fetch_one(
+            """SELECT request_id FROM spawn_requests
+               WHERE run_id = ? AND dedup_key = ? AND status = 'pending'
+               LIMIT 1""",
+            (run_id, dedup_key),
+        )
+        if existing:
+            return existing["request_id"]
+        raise
     if commit:
         db.conn.commit()
     return req_id
@@ -150,17 +213,21 @@ def claim_spawn_requests(
     claimed: List[Dict[str, Any]] = []
 
     for req in candidates:
+        claim_token = str(uuid.uuid4())
         cur = db.execute(
             """UPDATE spawn_requests
                SET status = 'spawning'
                    , claimed_at = datetime('now')
+                   , claimed_by = ?
                WHERE request_id = ?
                  AND status = 'pending'
                  AND expires_at > datetime('now')""",
-            (req["request_id"],),
+            (claim_token, req["request_id"]),
         )
         if cur.rowcount == 1:
             req["status"] = "spawning"
+            req["claimed_by"] = claim_token
+            req["claim_token"] = claim_token
             claimed.append(req)
 
     if claimed:
@@ -180,6 +247,7 @@ def recover_stale_spawn_claims(db, stale_seconds: int = 120) -> int:
         """UPDATE spawn_requests
            SET status = 'pending',
                claimed_at = NULL,
+               claimed_by = NULL,
                reason = COALESCE(reason, '') || ' | recovered_stale_claim'
            WHERE status = 'spawning'
              AND expires_at > datetime('now')
@@ -191,15 +259,31 @@ def recover_stale_spawn_claims(db, stale_seconds: int = 120) -> int:
     return cur.rowcount
 
 
-def mark_spawn_fulfilled(db, request_id: str, spawned_agent_id: str) -> None:
-    """标记 spawn 请求已完成"""
-    db.execute(
+def mark_spawn_fulfilled(
+    db,
+    request_id: str,
+    spawned_agent_id: str,
+    claim_token: str = None,
+) -> bool:
+    """标记 spawn 请求已完成；spawning 请求必须匹配 claim token。"""
+    cur = db.execute(
         """UPDATE spawn_requests
-           SET status = 'fulfilled', spawned_agent_id = ?, claimed_at = NULL
-           WHERE request_id = ? AND status IN ('pending', 'spawning')""",
-        (spawned_agent_id, request_id),
+           SET status = 'fulfilled',
+               spawned_agent_id = ?,
+               claimed_at = NULL,
+               claimed_by = NULL
+           WHERE request_id = ?
+             AND (
+               (status = 'pending' AND claimed_by IS NULL)
+               OR (status = 'spawning' AND claimed_by = ?)
+             )""",
+        (spawned_agent_id, request_id, claim_token),
     )
     db.conn.commit()
+    if cur.rowcount != 1:
+        _log.warning("Spawn: rejected fulfillment for %s due to claim token mismatch", request_id)
+        return False
+    return True
 
 
 def mark_spawn_rejected(db, request_id: str, reason: str = "") -> None:
@@ -207,7 +291,7 @@ def mark_spawn_rejected(db, request_id: str, reason: str = "") -> None:
     extra = f" | rejected: {reason}" if reason else ""
     db.execute(
         "UPDATE spawn_requests SET status = 'rejected', "
-        "claimed_at = NULL, reason = COALESCE(reason, '') || ? "
+        "claimed_at = NULL, claimed_by = NULL, reason = COALESCE(reason, '') || ? "
         "WHERE request_id = ? AND status IN ('pending', 'spawning')",
         (extra, request_id),
     )
@@ -222,7 +306,7 @@ def expire_old_requests(db) -> int:
         被标记为 expired 的记录数
     """
     cur = db.execute(
-        "UPDATE spawn_requests SET status = 'expired', claimed_at = NULL "
+        "UPDATE spawn_requests SET status = 'expired', claimed_at = NULL, claimed_by = NULL "
         "WHERE status IN ('pending', 'spawning') AND expires_at < datetime('now')"
     )
     db.conn.commit()
@@ -231,7 +315,7 @@ def expire_old_requests(db) -> int:
 
 def merge_duplicate_requests(db, run_id: str) -> int:
     """
-    合并同一 run 中相同 requested_role + parent_task + context 的重复 pending 请求。
+    合并同一 run 中相同 dedup_key 的重复 pending 请求。
     
     策略：保留优先级最高的，其余标记为 rejected。
     防止 5 个 scanner 同时请求同一个 exploiter。
@@ -239,54 +323,63 @@ def merge_duplicate_requests(db, run_id: str) -> int:
     Returns:
         被合并的请求数
     """
-    # 找到重复的 (run_id, requested_role, parent_task_id, context_entry_ids) 组。
-    # 只按 role 合并会误杀不同目标/证据触发的同类请求。
-    dupes = db.fetch_all(
-        """SELECT run_id, requested_role, COALESCE(parent_task_id, '') AS parent_key,
-                  context_entry_ids, COUNT(*) AS cnt,
-                  MAX(priority) AS max_priority
+    rows = db.fetch_all(
+        """SELECT request_id, run_id, requested_role, reason, context_entry_ids,
+                  dedup_key, priority, created_at
            FROM spawn_requests
            WHERE run_id = ? AND status = 'pending'
-             AND expires_at > datetime('now')
-           GROUP BY run_id, requested_role, COALESCE(parent_task_id, ''), context_entry_ids
-           HAVING cnt > 1""",
+             AND expires_at > datetime('now')""",
         (run_id,),
     )
 
-    merged = 0
-    for row in dupes:
-        # 保留优先级最高的一条
-        keep = db.fetch_one(
-            """SELECT request_id FROM spawn_requests
-               WHERE run_id = ? AND requested_role = ?
-                 AND COALESCE(parent_task_id, '') = ?
-                 AND context_entry_ids = ?
-                 AND status = 'pending'
-                 AND priority = ?
-               ORDER BY created_at ASC LIMIT 1""",
-            (
-                row["run_id"], row["requested_role"], row["parent_key"],
-                row["context_entry_ids"], row["max_priority"],
-            ),
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    for row in rows:
+        req = dict(row)
+        dedup_key = req.get("dedup_key") or build_spawn_dedup_key(
+            req["run_id"],
+            req["requested_role"],
+            req["reason"],
+            _decode_context_entry_ids(req.get("context_entry_ids")),
         )
-        if not keep:
+        req["dedup_key"] = dedup_key
+        groups.setdefault(dedup_key, []).append(req)
+
+    merged = 0
+    backfilled = 0
+    for dedup_key, requests in groups.items():
+        if len(requests) <= 1:
+            req = requests[0]
+            current_key = next(
+                (dict(row).get("dedup_key") for row in rows if row["request_id"] == req["request_id"]),
+                None,
+            )
+            if not current_key:
+                db.execute(
+                    "UPDATE spawn_requests SET dedup_key = ? WHERE request_id = ?",
+                    (dedup_key, req["request_id"]),
+                )
+                backfilled += 1
             continue
 
+        keep = sorted(
+            requests,
+            key=lambda req: (-(req.get("priority") or 0), req.get("created_at") or ""),
+        )[0]
         keep_id = keep["request_id"]
+        duplicate_ids = [req["request_id"] for req in requests if req["request_id"] != keep_id]
+        placeholders = ",".join("?" for _ in duplicate_ids)
         cur = db.execute(
-            """UPDATE spawn_requests SET status = 'rejected'
-               WHERE run_id = ? AND requested_role = ?
-                 AND COALESCE(parent_task_id, '') = ?
-                 AND context_entry_ids = ?
-                 AND status = 'pending'
-                 AND request_id != ?""",
-            (
-                row["run_id"], row["requested_role"], row["parent_key"],
-                row["context_entry_ids"], keep_id,
-            ),
+            f"""UPDATE spawn_requests
+                SET status = 'rejected', dedup_key = ?
+                WHERE request_id IN ({placeholders})""",
+            (dedup_key, *duplicate_ids),
+        )
+        db.execute(
+            "UPDATE spawn_requests SET dedup_key = ? WHERE request_id = ?",
+            (dedup_key, keep_id),
         )
         merged += cur.rowcount
 
-    if merged:
+    if merged or backfilled:
         db.conn.commit()
     return merged

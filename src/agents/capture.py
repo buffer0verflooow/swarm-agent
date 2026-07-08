@@ -49,6 +49,13 @@ class CaptureSource(str, Enum):
     CROSS_VALIDATION = "cross_validation" # 多 Agent 交叉验证结果
 
 
+HIGH_TRUST_SOURCES = (
+    CaptureSource.TASK_RESULT, CaptureSource.USER_CORRECTION,
+    CaptureSource.ERROR_RESOLUTION, CaptureSource.ARTICLE,
+    CaptureSource.DISCOVERY, CaptureSource.CROSS_VALIDATION,
+)
+
+
 @dataclass
 class CaptureContext:
     """统一的知识捕获上下文"""
@@ -78,23 +85,36 @@ def assess_capture_signal(ctx: CaptureContext) -> Dict[str, Any]:
     """Return the signal assessment used before promoting raw events to KB."""
     content = ctx.content.strip()
     if ctx.metadata.get("force_capture"):
-        return {
-            "worth_capturing": True,
-            "reason": "forced_capture",
-            "signal_count": _count_signals(ctx),
-            "min_signal": 0,
-        }
-    if len(content) < 60:            # 太短 → 噪声
-        return {
-            "worth_capturing": False,
-            "reason": "content_too_short",
-            "signal_count": _count_signals(ctx),
-            "min_signal": 0,
-        }
+        if ctx.source in HIGH_TRUST_SOURCES and (ctx.source_agent or "").strip():
+            _log.warning(
+                "capture: force_capture accepted source=%s source_agent=%s run_id=%s",
+                ctx.source, ctx.source_agent, ctx.source_run_id,
+            )
+            return {
+                "worth_capturing": True,
+                "reason": "forced_capture",
+                "signal_count": _count_signals(ctx),
+                "min_signal": 0,
+            }
+        _log.warning(
+            "capture: force_capture ignored source=%s source_agent=%s run_id=%s",
+            ctx.source, ctx.source_agent, ctx.source_run_id,
+        )
+    # 高价值来源: 即使是短内容也信任 (agent 显式 capture 的发现)
+    if len(content) < 60:
+        if ctx.source in HIGH_TRUST_SOURCES:
+            # 短但高价值 → 放行，但标记为低信号以便日后审查
+            _log.info("capture: short content (%d chars) from trusted source %s — allowing", len(content), ctx.source)
+        else:
+            return {
+                "worth_capturing": False,
+                "reason": "content_too_short",
+                "signal_count": _count_signals(ctx),
+                "min_signal": 0,
+            }
     if content.count('\n') < 1 and len(content) < 150:
         # 极短单行 → 大概率是闲聊，除非来源是高价值源
-        if ctx.source not in (CaptureSource.TASK_RESULT, CaptureSource.USER_CORRECTION,
-                               CaptureSource.ERROR_RESOLUTION, CaptureSource.ARTICLE):
+        if ctx.source not in HIGH_TRUST_SOURCES:
             return {
                 "worth_capturing": False,
                 "reason": "short_single_line_low_value_source",
@@ -467,6 +487,16 @@ def capture(
     Returns:
         入库的 entry_id，如果被信号过滤器拒绝则返回 None
     """
+    if ctx.metadata.get("force_capture") and (
+        ctx.source not in HIGH_TRUST_SOURCES or not (ctx.source_agent or "").strip()
+    ):
+        ctx.metadata = dict(ctx.metadata)
+        ctx.metadata.pop("force_capture", None)
+        _log.warning(
+            "capture: stripped unauthorized force_capture source=%s source_agent=%s run_id=%s",
+            ctx.source, ctx.source_agent, ctx.source_run_id,
+        )
+
     # 1. 无损原始事件记录。KB promotion 可以过滤，agent handoff 不能丢原文。
     assessment = assess_capture_signal(ctx)
     raw_event_id = record_raw_agent_event(
