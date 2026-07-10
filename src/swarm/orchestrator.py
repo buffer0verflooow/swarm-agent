@@ -264,8 +264,8 @@ class SwarmOrchestrator:
     def _auto_spawn_roles(self, entry: dict) -> list:
         """根据知识条目类型决定应该 spawn 什么角色的 agent。"""
         roles = set()
-        ktype = entry.get("knowledge_type", "")
-        level = entry.get("level", 1)
+        ktype = entry.get("knowledge_type", "") if isinstance(entry, dict) else entry["knowledge_type"]
+        level = entry.get("level", 1) if isinstance(entry, dict) else entry["level"]
 
         if ktype == "vulnerability":
             roles.add("analyst")
@@ -594,6 +594,8 @@ class SwarmOrchestrator:
         """
         为新 Agent 构建 KB 上下文注入。
         从触发 spawn 的知识条目中提取相关信息。
+
+        Phase A: 注入蜂群探索记忆，让 Agent 知道哪些路径已被测试过。
         """
         context_entry_ids = req.get("context_entry_ids", "[]")
         try:
@@ -623,6 +625,22 @@ class SwarmOrchestrator:
                 parts.append("\n## 已知策略规则")
                 for r in rules:
                     parts.append(f"- **{r['rule_name']}** (p={r['priority']}): {r['rule_body'][:200]}")
+        except Exception:
+            pass
+
+        # Phase A: 注入蜂群探索记忆
+        try:
+            run_id = req.get("run_id", "")
+            if run_id:
+                from src.swarm.exploration import build_exploration_context
+                exploration_ctx = build_exploration_context(self.db, run_id)
+                if exploration_ctx:
+                    parts.append("\n" + exploration_ctx)
+                    parts.append(
+                        "\n> ⚠️ 以上是蜂群已探索的路径记录。你可以用它避免重复已测试的组合，"
+                        "但注意：如果之前的测试深度是 'shallow'，你可能需要用更深的技术重新测试。"
+                        "记录显示 'not_found' ≠ 一定没有漏洞。自行判断是否需要重新探索。"
+                    )
         except Exception:
             pass
 

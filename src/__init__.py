@@ -56,6 +56,11 @@ from .swarm.client_api import (
     submit_swarm_task, refresh_run_status, get_swarm_status,
     get_swarm_result, wait_for_swarm_result,
 )
+from .swarm.exploration import (
+    record_trace, get_explored_for_target,
+    get_exploration_summary, get_exhausted_paths,
+    build_exploration_context, get_unexplored_hints,
+)
 
 __all__ = [
     # DB
@@ -99,4 +104,8 @@ __all__ = [
     "SwarmRunner", "RunnerResult", "adapt_executor_factory",
     "submit_swarm_task", "refresh_run_status", "get_swarm_status",
     "get_swarm_result", "wait_for_swarm_result",
+    # Exploration (Phase A)
+    "record_trace", "get_explored_for_target",
+    "get_exploration_summary", "get_exhausted_paths",
+    "build_exploration_context", "get_unexplored_hints",
 ]
