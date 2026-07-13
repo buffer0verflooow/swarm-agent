@@ -392,3 +392,59 @@ Swarm Controller/Worker v0.7.0 的三层架构设计（Signal Stream → Control
 - Controller 的 false_positive kill 率
 - 新 spawn Worker 的首次有用产出延迟
 - LLM vs Rules 模式的决策一致性（Kappa 系数）
+
+---
+
+## Daily Auto-Fix 2026-07-14
+
+> 执行方式：自动化 cron job（Codex API 限流，改为直接 patch 应用）
+
+### 已修复
+
+#### P0 修复
+
+1. **Controller 切换到 LLM 模式** (`orchestrator.py` L555)
+   - `mode="rules"` → `mode="llm"` — 符合架构设计意图
+   - Controller 内置 LLM→Rules 降级机制，无风险
+
+2. **budget_strategy 写入乐观锁** (`controller.py` + `orchestrator.py` + migration 013)
+   - 新增 `swarm_runs.strategy_version` 列（migration 013）
+   - `_execute_adjust_budget()` 和 `_tick_power_schedule()` 均使用 CAS (Compare-And-Swap) 模式
+   - 重试 2 次后降级为无锁更新
+
+3. **`_execute_kill()` 显式事务** (`controller.py`)
+   - 所有 UPDATE/DELETE 包裹在 `BEGIN IMMEDIATE` / `COMMIT` / `ROLLBACK` 中
+   - 任意语句失败 → 完整回滚
+
+#### P1 修复
+
+4. **`compute_novelty_score()` 升级为 MinHash** (`signals.py`)
+   - 新增 `_minhash_signature()` 和 `_jaccard_from_signatures()` 辅助函数
+   - 使用 128 个 hash 函数 + word 3-gram shingles 做 Jaccard 相似度估算
+   - 替代原有的 `set(content.split()[:100])` token overlap 方法
+   - 不再截断到 100 token，支持全文比较
+
+5. **Orchestrator 健康检查 tick** (`orchestrator.py`)
+   - 新增 `POLL_HEALTH_SEC = 30` 和 `_tick_health()` 方法
+   - 检查：子模块 import 可用性、`controller_decisions` 表存在、`worker_signals` 表大小（>100K 告警）
+   - 集成到 `run_loop` 主循环作为第 ⑦ 个 tick
+
+6. **Worker spawn 注入上下文** (`controller.py` `_tick_rules()` + `_execute_spawn()`)
+   - 所有 Worker 被 kill 后，新 spawn 的 scanner 从 `knowledge_entries` 取最近 3 条作为 `context_entry_ids`
+   - `_execute_spawn()` 通过 `request_spawn(context_entry_ids=...)` 传递上下文
+
+### 测试结果
+
+```
+test_controller.py:    14/14 passed ✅
+test_worker_signals.py: 27/27 passed ✅
+test_exploration_traces.py: 25/25 passed ✅
+test_worker_mode.py:    9/9 passed ✅
+test_swarm_loop.py:    ALL TESTS PASSED ✅
+```
+
+### 已知注意事项
+
+- `test_controller.py` 使用嵌入式 SQLite，不运行 migration，因此 `strategy_version` 列缺失但调整 budget 测试仍通过（fallback 路径）
+- MinHash 计算在长文本（>500 words）上可能较慢，`compute_novelty_score()` 每个调用约 2-5ms；如需进一步优化可考虑进程内存 L1 cache（P1 建议的 novelty cache）
+- Codex CLI 本次因 API 高负载限流未能执行，所有修复通过直接 patch 应用并通过测试验证
