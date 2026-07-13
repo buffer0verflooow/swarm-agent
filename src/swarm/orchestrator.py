@@ -179,8 +179,17 @@ class SwarmOrchestrator:
                 continue
 
             try:
-                # 为新 Agent 构建 KB 上下文
-                context = self._build_spawn_context(req)
+                # Phase C: detect worker_mode from reason marker
+                reason = req.get("reason", "")
+                if "[worker_mode]" in reason:
+                    req["worker_mode"] = True
+                    req["reason"] = reason.replace(" [worker_mode]", "")
+
+                # 为新 Agent 构建 KB 上下文 (worker_mode 时跳过探索记忆)
+                if req.get("worker_mode"):
+                    context = self._build_spawn_context_worker(req)
+                else:
+                    context = self._build_spawn_context(req)
                 agent_id = await self.spawn_handler(req, context)
 
                 if agent_id:
@@ -668,6 +677,32 @@ class SwarmOrchestrator:
                     )
         except Exception:
             pass
+
+        return "\n".join(parts)
+
+    def _build_spawn_context_worker(self, req: dict) -> str:
+        """
+        Worker 专用上下文 — 只给任务，不给全局探索记忆。
+        Worker 不知道自己被 Controller 监控。
+        """
+        context_entry_ids = req.get("context_entry_ids", "[]")
+        try:
+            entry_ids = json.loads(context_entry_ids) if isinstance(context_entry_ids, str) else context_entry_ids
+        except (json.JSONDecodeError, TypeError):
+            entry_ids = []
+
+        parts = [f"## 任务\n{req.get('reason', req['reason'])}"]
+
+        # 只注入触发知识条目的摘要
+        if entry_ids:
+            parts.append("\n## 关联发现")
+            for eid in entry_ids[:2]:
+                row = self.db.fetch_one(
+                    "SELECT title, knowledge_type, level FROM knowledge_entries WHERE id = ?",
+                    (eid,),
+                )
+                if row:
+                    parts.append(f"- [{row['knowledge_type']}] L{row['level']}: {row['title'][:100]}")
 
         return "\n".join(parts)
 

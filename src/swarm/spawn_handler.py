@@ -210,6 +210,7 @@ class HermesSpawnHandler(BaseSpawnHandler):
         max_chain_depth = spawn_request["max_chain_depth"] if spawn_request["max_chain_depth"] else 3
         fallback_agent_id = str(uuid.uuid4())
         parent_task_id = spawn_request.get("parent_task_id") or ""
+        worker_mode = spawn_request.get("worker_mode", False)
 
         template = self.GOAL_TEMPLATES.get(role, self.GOAL_TEMPLATES["scanner"])
         goal = template.format(
@@ -222,6 +223,15 @@ class HermesSpawnHandler(BaseSpawnHandler):
             parent_task_id=parent_task_id,
             role=role,
         )
+
+        # Worker mode: append caveman output directive
+        if worker_mode:
+            goal += (
+                "\n\n## Worker 模式\n"
+                "你是独立 Worker。只关注分配给你的任务，不需要了解蜂群全局状态。\n"
+                "使用 caveman-full 压缩输出风格：丢废话、留实质。代码/命令/报错原文照抄。\n"
+                "发现仍通过 capture.py 完整记录——压缩只影响对话输出。"
+            )
 
         if not self.delegate_fn:
             _log.warning("HermesSpawnHandler: no delegate_fn; refusing to mark spawn as created")

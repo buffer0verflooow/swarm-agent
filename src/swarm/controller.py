@@ -434,7 +434,7 @@ class Controller:
         _log.info("Controller: boosted %s — %s", aid[:12], d.reason[:60])
 
     def _execute_spawn(self, run_id: str, d: ControllerDecision):
-        """Spawn new Worker: 通过 spawn_requests 信号。"""
+        """Spawn new Worker: 通过 spawn_requests 信号 (worker_mode=true)。"""
         from .spawner import request_spawn
         request_spawn(
             self.db,
@@ -444,6 +444,12 @@ class Controller:
             reason=f"Controller auto-spawn: {d.reason}",
             priority=70,
         )
+        # Mark as worker mode spawn via metadata
+        self.db.execute(
+            "UPDATE spawn_requests SET reason = reason || ' [worker_mode]' WHERE run_id = ? AND requesting_agent = 'controller' AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+            (run_id,),
+        )
+        self.db.conn.commit()
         _log.info("Controller: spawn %s — %s", d.target_role, d.reason[:60])
 
     def _execute_adjust_budget(self, run_id: str, d: ControllerDecision):
