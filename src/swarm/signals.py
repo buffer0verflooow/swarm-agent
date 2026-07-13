@@ -36,7 +36,7 @@ _log = logging.getLogger("swarm_knowledge.signals")
 
 # ── 常量 ──
 
-LOOP_DETECT_WINDOW = 5           # 检查最近 N 条信号
+LOOP_DETECT_WINDOW = 8           # 检查最近 N 条信号 (足够覆盖混合场景)
 LOOP_NOVELTY_THRESHOLD = 0.1     # novelty_score 低于此值 → 无新发现
 LOOP_CONSECUTIVE_COUNT = 3       # 连续 N 次低 novelty → 判定为兜圈
 STUCK_QUALITY_THRESHOLD = 0.3    # mean output_quality 低于此 → 卡住
@@ -193,17 +193,16 @@ def detect_loops(
     if len(signals) < consecutive:
         return False, f"not enough signals ({len(signals)} < {consecutive})"
 
-    # 检查最近 consecutive 条是否全部低 novelty
-    recent = signals[:consecutive]
-    low_novelty_count = sum(1 for s in recent if s["novelty_score"] < threshold)
-
-    if low_novelty_count >= consecutive:
-        avg_nov = sum(s["novelty_score"] for s in recent) / len(recent)
-        avg_qual = sum(s["output_quality"] for s in recent) / len(recent)
-        return True, (
-            f"loop detected: last {consecutive} signals all novelty<{threshold} "
-            f"(avg_novelty={avg_nov:.3f}, avg_quality={avg_qual:.3f})"
-        )
+    # 滑动窗口: 检查所有连续的 consecutive 条信号
+    for i in range(len(signals) - consecutive + 1):
+        window_signals = signals[i:i + consecutive]
+        if all(s["novelty_score"] < threshold for s in window_signals):
+            avg_nov = sum(s["novelty_score"] for s in window_signals) / consecutive
+            avg_qual = sum(s["output_quality"] for s in window_signals) / consecutive
+            return True, (
+                f"loop detected: {consecutive} consecutive signals at index {i}-{i+consecutive-1} "
+                f"all novelty<{threshold} (avg_novelty={avg_nov:.3f}, avg_quality={avg_qual:.3f})"
+            )
 
     return False, "ok"
 
@@ -359,6 +358,14 @@ def record_signal_from_capture(
     quality = QUALITY_BY_KNOWLEDGE_TYPE.get(knowledge_type, 0.5)
     novelty = compute_novelty_score(db, run_id, content, agent_id)
 
+    # efficiency 估算: 基于知识类型的价值密度
+    efficiency_map = {
+        "vulnerability": 5.0, "technique": 3.0, "pattern": 2.0,
+        "observation": 1.0, "strategy": 2.5, "configuration": 0.5,
+        "general": 0.3,
+    }
+    efficiency = efficiency_map.get(knowledge_type, 1.0)
+
     return record_worker_signal(
         db,
         run_id=run_id,
@@ -366,6 +373,7 @@ def record_signal_from_capture(
         signal_type="finding",
         output_quality=quality,
         novelty_score=novelty,
+        efficiency=efficiency,
         knowledge_entry_id=knowledge_entry_id,
         task_id=task_id,
         raw_output_snippet=content[:300] if content else "",

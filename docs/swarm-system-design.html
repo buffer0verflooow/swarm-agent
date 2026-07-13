@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>蜂群 Agent 系统设计说明</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #151c23;
+      --panel-2: #1c2530;
+      --line: #334150;
+      --text: #e8edf2;
+      --muted: #9aa8b6;
+      --cyan: #39c5d9;
+      --green: #4ec98f;
+      --amber: #e5b65b;
+      --red: #e36f6f;
+      --blue: #7aa7ff;
+      --violet: #b18cff;
+      --code: #0b1015;
+      --shadow: 0 18px 48px rgba(0, 0, 0, 0.25);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+
+    a {
+      color: var(--cyan);
+      text-decoration: none;
+    }
+
+    code {
+      padding: 0.12rem 0.35rem;
+      border: 1px solid rgba(122, 167, 255, 0.18);
+      border-radius: 5px;
+      background: var(--code);
+      color: #dce7ff;
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    pre {
+      overflow: auto;
+      margin: 0;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--code);
+      color: #dce7ff;
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+      font-size: 0.88rem;
+    }
+
+    .shell {
+      white-space: pre-wrap;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid rgba(51, 65, 80, 0.75);
+      background: rgba(15, 20, 25, 0.92);
+      backdrop-filter: blur(12px);
+    }
+
+    .topbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0.75rem 1.25rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      min-width: 12rem;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .mark {
+      display: grid;
+      place-items: center;
+      width: 2rem;
+      height: 2rem;
+      border: 1px solid rgba(57, 197, 217, 0.4);
+      border-radius: 8px;
+      color: var(--cyan);
+      background: #12222b;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.85rem;
+    }
+
+    .nav {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 0.25rem;
+    }
+
+    .nav a {
+      padding: 0.45rem 0.65rem;
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .nav a:hover {
+      background: var(--panel-2);
+      color: var(--text);
+    }
+
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(22rem, 1.1fr);
+      gap: 1.5rem;
+      align-items: stretch;
+      min-height: 520px;
+      padding: 1rem 0 2rem;
+    }
+
+    .hero-copy {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+    }
+
+    .eyebrow {
+      color: var(--green);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      margin: 0.75rem 0 1rem;
+      font-size: clamp(2.2rem, 6vw, 4.8rem);
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      max-width: 43rem;
+      margin: 0;
+      color: var(--muted);
+      font-size: 1.08rem;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+    }
+
+    .stat {
+      min-height: 6.25rem;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .stat strong {
+      display: block;
+      color: var(--text);
+      font-size: 1.55rem;
+      line-height: 1.1;
+    }
+
+    .stat span {
+      display: block;
+      margin-top: 0.4rem;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .system-map {
+      display: grid;
+      align-content: center;
+      min-height: 480px;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #111820;
+      box-shadow: var(--shadow);
+    }
+
+    .map-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .node {
+      min-height: 5.2rem;
+      padding: 0.85rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .node.center {
+      min-height: 11.2rem;
+      border-color: rgba(57, 197, 217, 0.55);
+      background: #12212a;
+    }
+
+    .node-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .node-title small {
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .node p {
+      margin: 0.45rem 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .arrow {
+      display: grid;
+      place-items: center;
+      color: var(--cyan);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 1rem;
+    }
+
+    section {
+      padding: 2.5rem 0 0;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: clamp(1.6rem, 3vw, 2.4rem);
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    .section-head p {
+      max-width: 36rem;
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .band {
+      padding: 1.25rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 0.55rem;
+    }
+
+    .flow-step {
+      min-height: 8.2rem;
+      padding: 0.85rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+    }
+
+    .flow-step b {
+      display: block;
+      color: var(--text);
+      font-size: 0.96rem;
+      line-height: 1.25;
+    }
+
+    .flow-step span {
+      display: block;
+      margin-top: 0.45rem;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .card {
+      min-height: 16rem;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .card h3 {
+      margin: 0;
+      color: var(--text);
+      font-size: 1.1rem;
+      letter-spacing: 0;
+    }
+
+    .card p {
+      margin: 0.65rem 0 0;
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 1.55rem;
+      margin: 0 0.35rem 0.35rem 0;
+      padding: 0.12rem 0.45rem;
+      border: 1px solid rgba(154, 168, 182, 0.35);
+      border-radius: 999px;
+      color: var(--muted);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.72rem;
+    }
+
+    .tag.cyan { border-color: rgba(57, 197, 217, 0.45); color: var(--cyan); }
+    .tag.green { border-color: rgba(78, 201, 143, 0.45); color: var(--green); }
+    .tag.amber { border-color: rgba(229, 182, 91, 0.45); color: var(--amber); }
+    .tag.red { border-color: rgba(227, 111, 111, 0.45); color: var(--red); }
+    .tag.blue { border-color: rgba(122, 167, 255, 0.45); color: var(--blue); }
+    .tag.violet { border-color: rgba(177, 140, 255, 0.45); color: var(--violet); }
+
+    .algorithm {
+      display: grid;
+      grid-template-columns: 0.95fr 1.05fr;
+      gap: 1rem;
+      align-items: stretch;
+    }
+
+    .formula {
+      display: grid;
+      align-content: center;
+      min-height: 14rem;
+      padding: 1.25rem;
+      border: 1px solid rgba(57, 197, 217, 0.35);
+      border-radius: 8px;
+      background: #101e26;
+    }
+
+    .formula strong {
+      display: block;
+      color: var(--cyan);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 1.15rem;
+      line-height: 1.5;
+    }
+
+    .formula span {
+      display: block;
+      margin-top: 0.75rem;
+      color: var(--muted);
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+    }
+
+    th,
+    td {
+      padding: 0.8rem 0.9rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--text);
+      background: var(--panel-2);
+      font-size: 0.9rem;
+    }
+
+    td {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      align-items: start;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .tick {
+      display: grid;
+      grid-template-columns: 5.8rem 1fr;
+      gap: 0.75rem;
+      padding: 0.85rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .tick-time {
+      color: var(--green);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.86rem;
+    }
+
+    .tick b {
+      display: block;
+      color: var(--text);
+    }
+
+    .tick p {
+      margin: 0.25rem 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .footer {
+      margin-top: 3rem;
+      padding: 1.25rem;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 980px) {
+      .hero,
+      .algorithm,
+      .split {
+        grid-template-columns: 1fr;
+      }
+
+      .flow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .cards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .section-head {
+        align-items: start;
+        flex-direction: column;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .topbar {
+        position: static;
+      }
+
+      .topbar-inner,
+      .nav {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .wrap {
+        padding: 1.25rem 0.9rem 3rem;
+      }
+
+      .hero {
+        min-height: auto;
+      }
+
+      .stats,
+      .flow,
+      .cards,
+      .map-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .arrow {
+        transform: rotate(90deg);
+        min-height: 2rem;
+      }
+
+      .tick {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><span class="mark">SW</span><span>蜂群 Agent 系统设计</span></div>
+      <nav class="nav" aria-label="章节导航">
+        <a href="#overview">总览</a>
+        <a href="#workflow">流程</a>
+        <a href="#algorithms">算法</a>
+        <a href="#governance">治理</a>
+        <a href="#models">模型</a>
+        <a href="#ops">入口</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero" id="overview">
+      <div class="hero-copy">
+        <div class="eyebrow">SQLite Stigmergy Runtime</div>
+        <h1>蜂群通过共享环境协作，而不是固定流水线。</h1>
+        <p class="lead">
+          当前系统以单个 SQLite 知识库作为共享环境。Agent 不直接互相调用，而是向
+          <code>agent_tasks</code>、<code>knowledge_entries</code>、<code>spawn_requests</code>
+          写入信号；worker、orchestrator 和 governance loop 通过轮询这些信号形成异步协作。
+        </p>
+        <div class="stats">
+          <div class="stat"><strong>9</strong><span>迁移文件覆盖核心 schema、任务市场、模型 profile、artifact、赏金门控。</span></div>
+          <div class="stat"><strong>5</strong><span>默认角色模型画像：scanner、analyst、exploiter、reporter、custom。</span></div>
+          <div class="stat"><strong>7</strong><span>主流程阶段：submit、seed、claim、execute、capture、fan-out、govern。</span></div>
+          <div class="stat"><strong>4</strong><span>DIKW 层级：Data、Information、Knowledge、Wisdom。</span></div>
+        </div>
+      </div>
+
+      <div class="system-map" aria-label="系统结构图">
+        <div class="map-grid">
+          <div class="node">
+            <div class="node-title">外部客户端 <small>Claude / Codex / Hermes</small></div>
+            <p>通过 <code>swarmctl.py task</code> 提交高层目标，查询 run 状态和结果。</p>
+          </div>
+          <div class="arrow">-&gt;</div>
+          <div class="node">
+            <div class="node-title">Run Manager <small>seed</small></div>
+            <p>创建 <code>swarm_runs</code>，按 intent/profile 发布初始市场任务。</p>
+          </div>
+
+          <div class="node">
+            <div class="node-title">Workers <small>role pool</small></div>
+            <p>scanner、analyst、exploiter、reporter 按角色原子领取任务。</p>
+          </div>
+          <div class="node center">
+            <div class="node-title">SQLite 共享环境 <small>durable state</small></div>
+            <p><code>agent_tasks</code> 是任务市场；<code>knowledge_entries</code> 是 DIKW 知识层；
+              <code>raw_agent_events</code> 保留原始输出；<code>swarm_behaviors</code> 记录涌现行为。</p>
+          </div>
+          <div class="node">
+            <div class="node-title">Orchestrator <small>ticks</small></div>
+            <p>恢复卡住的 claim，按积压请求 spawn，清理心跳，触发治理和 power schedule。</p>
+          </div>
+
+          <div class="node">
+            <div class="node-title">Capture <small>signal</small></div>
+            <p>任务结果进入 raw event，再过滤、分类、去重、lineage、入库。</p>
+          </div>
+          <div class="arrow">-&gt;</div>
+          <div class="node">
+            <div class="node-title">Governance <small>evolve</small></div>
+            <p>DIKW 提升、信息素衰减、反例衰减、验证队列、策略蒸馏、本体发现。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="workflow">
+      <div class="section-head">
+        <h2>端到端工作流程</h2>
+        <p>系统启动后没有固定的 discover → analyze → exploit → report 阶段锁。初始任务只是种子，后续任务由知识捕获和市场信号自然展开。</p>
+      </div>
+      <div class="band">
+        <div class="flow">
+          <div class="flow-step"><b>1. 提交目标</b><span><code>swarmctl.py task submit</code> 写入外部请求并创建 run。</span></div>
+          <div class="flow-step"><b>2. 发布种子任务</b><span><code>run_manager</code> 根据 intent/profile 生成 scan/analyze/report 初始任务。</span></div>
+          <div class="flow-step"><b>3. worker 领取</b><span>角色匹配、优先级排序、原子 UPDATE，把 pending 任务转成 running。</span></div>
+          <div class="flow-step"><b>4. executor 执行</b><span>worker 把 task、KB context、model_profile 传给外部执行器。</span></div>
+          <div class="flow-step"><b>5. capture 入库</b><span>结果转为 raw event 和 knowledge entry，写 lineage 和 trust vector。</span></div>
+          <div class="flow-step"><b>6. 市场 fan-out</b><span>高价值知识自动发布 analyze/exploit/report 等后续任务。</span></div>
+          <div class="flow-step"><b>7. 治理演化</b><span>定时提升、衰减、验证、蒸馏策略和发现本体关系。</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="algorithms">
+      <div class="section-head">
+        <h2>核心算法</h2>
+        <p>核心实现都围绕“共享任务市场”和“知识信号循环”展开。任务是可竞争资源，知识是新的任务信号。</p>
+      </div>
+
+      <div class="cards">
+        <article class="card">
+          <span class="tag cyan">work_queue.py</span>
+          <h3>任务市场：优先级 + 角色匹配 + 原子 claim</h3>
+          <p>任务写入 <code>agent_tasks</code>，按 <code>priority DESC, created_at ASC</code> 暴露。worker 用带条件的 <code>UPDATE ... WHERE status='pending'</code> 抢占，多个 agent 竞争时只有一个能成功。</p>
+          <p><code>signal_key</code> 对 active 任务去重，避免同一知识重复生成 pending/running 任务。</p>
+        </article>
+
+        <article class="card">
+          <span class="tag green">capture.py</span>
+          <h3>知识捕获：先无损记录，再筛选入库</h3>
+          <p>每条输出先写 <code>raw_agent_events</code>。随后按来源计算信号阈值：任务结果、用户纠正、错误解决、文章默认保留；普通对话需要更强信号。</p>
+          <p>入库前按内容分类 DIKW level、knowledge_type、domain、intent 和 tags。</p>
+        </article>
+
+        <article class="card">
+          <span class="tag amber">content_hash</span>
+          <h3>去重与交叉验证</h3>
+          <p>完全相同内容使用 SHA-256 前缀做 <code>content_hash</code> 精确去重。重复内容不会创建新 entry，而是给已有知识补一条 <code>cross_agent_validation</code> lineage，并重置 pheromone。</p>
+        </article>
+
+        <article class="card">
+          <span class="tag blue">fan-out</span>
+          <h3>知识驱动的任务扩散</h3>
+          <p><code>publish_tasks_for_knowledge()</code> 根据知识类型生成后续工作。例如 <code>vulnerability/attack</code> 同时触发 analyst 影响分析、exploiter 授权验证和 reporter 滚动报告。</p>
+        </article>
+
+        <article class="card">
+          <span class="tag violet">orchestrator.py</span>
+          <h3>积压触发扩容</h3>
+          <p>orchestrator 周期扫描 pending 任务，统计各角色 idle agent 和 active spawn。当某角色任务积压超过容量时，写入 <code>spawn_requests</code>，由外部 spawn handler 决定是否生成新 agent。</p>
+        </article>
+
+        <article class="card">
+          <span class="tag red">recovery</span>
+          <h3>可恢复执行</h3>
+          <p>卡在 running 的任务会被 <code>recover_stale_work_claims()</code> 释放回 pending；卡住的 spawn claim 也会恢复。所有状态在 SQLite 中持久化，进程重启后可以继续轮询。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="governance">
+      <div class="section-head">
+        <h2>知识治理与自适应</h2>
+        <p>治理循环负责把一次性输出变成可复用知识，同时把过期、被反驳、低价值的路径降权。</p>
+      </div>
+
+      <div class="algorithm">
+        <div class="formula">
+          <strong>trust = 0.4 * base_confidence<br>+ 0.3 * logic_soundness<br>+ 0.3 * cross_validation</strong>
+          <span>DIKW 提升同时要求 trust 和 corroborating source 数量达标：L2 需要 1 个来源和 0.60；L3 需要 2 个来源和 0.75；L4 需要 3 个来源和 0.85。</span>
+        </div>
+        <div class="band">
+          <h3 style="margin-top:0">治理 tick 做什么</h3>
+          <div class="timeline">
+            <div class="tick"><div class="tick-time">60s</div><div><b>DIKW promotion</b><p>扫描 active knowledge_entries，满足 trust 和 lineage 条件时提升 level。</p></div></div>
+            <div class="tick"><div class="tick-time">60s</div><div><b>counter-example decay</b><p>反例超过阈值时，规则失效或知识标记 stale。</p></div></div>
+            <div class="tick"><div class="tick-time">60s</div><div><b>validation / wisdom / ontology</b><p>验证队列、L4 wisdom 蒸馏、tag 共现本体关系发现一起运行。</p></div></div>
+            <div class="tick"><div class="tick-time">15s</div><div><b>power schedule</b><p>按预算消耗和漏洞密度切换 breadth、balanced、depth，并让空闲 agent 抢高优先级任务。</p></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="split" style="margin-top:1rem">
+        <div class="band">
+          <h3 style="margin-top:0">信息素衰减</h3>
+          <p>知识条目带有 <code>pheromone</code> 和 <code>last_validated_at</code>。长时间未验证时按指数衰减：默认每 6 小时乘以 0.95。低于 0.1 的条目标记为 <code>stale</code>。重复验证或交叉验证会 boost 并更新验证时间。</p>
+          <pre><code>new_pheromone = old_pheromone * 0.95 ^ elapsed_intervals
+if new_pheromone &lt; 0.1:
+    status = "stale"</code></pre>
+        </div>
+        <div class="band">
+          <h3 style="margin-top:0">Power schedule</h3>
+          <p>调度策略借鉴 fuzzing 的预算分配思路。预算消耗低于 30% 时偏 breadth；高于 70% 时偏 depth；漏洞密度超过 15% 且预算已过探索初期时强制 depth。超过链深限制的 spawn 请求会被拒绝。</p>
+          <pre><code>if vuln_density &gt; 0.15 and budget_ratio &gt; 0.3:
+    strategy = "depth"
+elif budget_ratio &lt; 0.3:
+    strategy = "breadth"
+elif budget_ratio &gt; 0.7:
+    strategy = "depth"
+else:
+    strategy = "balanced"</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="bounty">
+      <div class="section-head">
+        <h2>漏洞赏金知识循环</h2>
+        <p>DIKW 回答“我们知道什么”，赏金门控回答“这个候选发现是否值得提交”。两者共享 knowledge entry，但门控状态单独维护。</p>
+      </div>
+      <div class="band">
+        <div class="flow" style="grid-template-columns: repeat(6, minmax(0, 1fr));">
+          <div class="flow-step"><b>ROI 排序</b><span><code>expected_payout / hours * competition_factor</code></span></div>
+          <div class="flow-step"><b>PoC 存在</b><span><code>poc_exists</code></span></div>
+          <div class="flow-step"><b>干净复现</b><span><code>clean_repro</code></span></div>
+          <div class="flow-step"><b>安全影响</b><span><code>impactful</code></span></div>
+          <div class="flow-step"><b>低权限可达</b><span><code>low_priv_reachable</code></span></div>
+          <div class="flow-step"><b>范围和去重</b><span><code>in_scope</code> + <code>deduplicated</code></span></div>
+        </div>
+        <p style="color:var(--muted); margin:1rem 0 0">全部 gate 通过后，hypothesis 变为 <code>validated</code>，对应知识至少提升到 L3。任一 gate 失败会写入 <code>negative_knowledge</code> 并生成 counter example，避免后续 campaign 重复走死路。</p>
+      </div>
+    </section>
+
+    <section id="ontology">
+      <div class="section-head">
+        <h2>本体发现</h2>
+        <p>本体层让系统不只保存文本，还能沉淀工具、技术、漏洞、角色、领域之间的关系。</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>共现类型</th>
+              <th>推断关系</th>
+              <th>方向</th>
+              <th>用途</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>tool + technique</td><td><code>implements</code></td><td>tool -&gt; technique</td><td>知道哪些工具实现某类扫描、利用或分析技术。</td></tr>
+            <tr><td>technique + vulnerability</td><td><code>exploits</code></td><td>technique -&gt; vulnerability</td><td>把可利用技术和漏洞类型关联起来。</td></tr>
+            <tr><td>tool + vulnerability</td><td><code>produces</code></td><td>tool -&gt; vulnerability</td><td>记录某工具常产出哪些发现。</td></tr>
+            <tr><td>technique + technique</td><td><code>composes</code></td><td>对称关系</td><td>支持攻击链或分析链组合。</td></tr>
+            <tr><td>agent_role + tool</td><td><code>uses</code></td><td>agent_role -&gt; tool</td><td>帮助 spawn context 注入角色相关策略。</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="models">
+      <div class="section-head">
+        <h2>模型配置</h2>
+        <p>当前蜂群默认不绑定具体 LLM 供应商，而是选择能力档位。真实执行器可以把 <code>client/fast</code> 等档位映射到 Claude、Codex、本地模型或其他服务。</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>角色</th>
+              <th>默认 profile</th>
+              <th>模型档位</th>
+              <th>参数</th>
+              <th>工具策略</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>scanner</td><td><code>default-scanner-fast</code></td><td><code>client/fast</code></td><td>12000 tokens, temperature 0.2</td><td>network=true, shell=true, write=false</td></tr>
+            <tr><td>analyst</td><td><code>default-analyst-reasoning</code></td><td><code>client/reasoning</code></td><td>20000 tokens, temperature 0.2</td><td>network=false, shell=true, write=false</td></tr>
+            <tr><td>exploiter</td><td><code>default-exploiter-careful</code></td><td><code>client/careful</code></td><td>20000 tokens, temperature 0.1</td><td>network=true, shell=true, write=false, destructive=false</td></tr>
+            <tr><td>reporter</td><td><code>default-reporter-writer</code></td><td><code>client/writer</code></td><td>16000 tokens, temperature 0.3</td><td>network=false, shell=false, write=true</td></tr>
+            <tr><td>custom</td><td><code>default-custom-balanced</code></td><td><code>client/balanced</code></td><td>16000 tokens, temperature 0.2</td><td>空策略</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="ops">
+      <div class="section-head">
+        <h2>操作入口</h2>
+        <p>外部系统通常只需要 submit/status/result；worker 和 runner 是蜂群内部执行入口。</p>
+      </div>
+      <div class="split">
+        <div class="band">
+          <h3 style="margin-top:0">常用命令</h3>
+          <pre class="shell"><code># 提交高层任务
+python3 swarmctl.py task submit \
+  --source codex \
+  --task "对目标做授权范围内的侦察和初筛" \
+  --intent recon \
+  --target-type webapp \
+  --target example.test \
+  --json
+
+# 查询状态和结果
+python3 swarmctl.py task status --run-id "$RUN_ID" --json
+python3 swarmctl.py task result --run-id "$RUN_ID" --json
+
+# 管理模型画像
+python3 swarmctl.py models list
+python3 swarmctl.py models set --role analyst --provider claude --model sonnet --default</code></pre>
+        </div>
+        <div class="band">
+          <h3 style="margin-top:0">文件职责</h3>
+          <p><code>start_swarm.py</code>：创建 run 并发布 seed tasks。</p>
+          <p><code>swarmctl.py</code>：外部 client API、模型 profile 管理、事件和 summary。</p>
+          <p><code>agent_worker.py</code>：单 worker claim/execute/complete 入口。</p>
+          <p><code>swarm_runner.py</code>：本地多 worker pool，运行到任务市场 idle。</p>
+          <p><code>src/swarm/orchestrator.py</code>：spawn、心跳、治理、power schedule 和负载均衡 tick。</p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      生成依据：当前 <code>swarm-knowledge</code> 代码和文档，包括 <code>work_queue.py</code>、<code>worker.py</code>、<code>orchestrator.py</code>、<code>capture.py</code>、<code>governance/engine.py</code>、<code>governance/bounty.py</code>、<code>ontology/discovery.py</code> 和模型 profile 迁移。
+    </footer>
+  </main>
+</body>
+</html>

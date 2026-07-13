@@ -1660,6 +1660,62 @@ async def test_orchestrator_work_market_expands_missing_roles():
     print("  ✅ orchestrator expands missing roles and idle agents claim market work")
 
 
+async def test_stigmergy_auto_spawn_from_vulnerability():
+    """测试 stigmergy auto-spawn: vulnerability知识条目 → 自动生成 spawn_requests"""
+    print("\n=== Test: Stigmergy Auto-Spawn from Vulnerability ===")
+    from uuid import uuid4
+    db = setup_test_db()
+    run_id = create_test_run(db)
+
+    entry_id = str(uuid4())
+    db.execute(
+        """INSERT INTO knowledge_entries
+           (id, title, content, knowledge_type, level, source_run_id, source_agent, status, created_at)
+           VALUES (?, 'SQL Injection in login', 'Found SQLi vuln',
+           'vulnerability', 3, ?, 'test-stigmergy', 'active', datetime('now'))""",
+        (entry_id, run_id),
+    )
+    db.execute(
+        """INSERT INTO knowledge_entries
+           (id, title, content, knowledge_type, level, source_run_id, source_agent, status, created_at)
+           VALUES (?, 'Open Redirect', 'Found open redirect',
+           'observation', 3, ?, 'test-stigmergy', 'active', datetime('now'))""",
+        (str(uuid4()), run_id),
+    )
+    db.conn.commit()
+
+    orch = SwarmOrchestrator(db)
+
+    async def mock_handler(req: dict, context: str) -> str:
+        agent_id = f"mock-{req['requested_role']}-{uuid4().hex[:6]}"
+        lc = AgentLifecycle(db, agent_id, run_id)
+        lc.register(role=req["requested_role"])
+        return agent_id
+
+    orch.set_spawn_handler(mock_handler)
+
+    await orch._tick_stigmergy_spawn(run_id)
+
+    spawns = db.fetch_all(
+        "SELECT requested_role, reason FROM spawn_requests WHERE run_id=? AND status='pending'",
+        (run_id,),
+    )
+    roles = {s["requested_role"] for s in spawns}
+    assert "analyst" in roles, f"expected analyst spawn, got {roles}"
+    print(f"  ✅ auto-spawned {len(spawns)} requests for roles: {roles}")
+
+    # 再次调用 stigmergy tick — 不应重复 spawn
+    await orch._tick_stigmergy_spawn(run_id)
+    second_run = db.fetch_all(
+        "SELECT requested_role FROM spawn_requests WHERE run_id=? AND status='pending'",
+        (run_id,),
+    )
+    assert len(second_run) == len(spawns), f"expected idempotent spawn, got {len(second_run)} vs {len(spawns)}"
+    print("  ✅ idempotent — no duplicate spawns on second tick")
+
+    db.close()
+
+
 async def test_orchestrator_loop():
     """测试 Orchestrator 主循环（mock spawn handler）"""
     print("\n=== Test: Orchestrator Loop ===")
@@ -1784,6 +1840,9 @@ def main():
 
     # Orchestrator 需要 asyncio
     asyncio.run(test_orchestrator_loop())
+
+    # Stigmergy auto-spawn
+    asyncio.run(test_stigmergy_auto_spawn_from_vulnerability())
 
     print("\n" + "=" * 60)
     print("ALL TESTS PASSED ✅")
