@@ -167,6 +167,7 @@ def get_all_worker_signals(
                COUNT(*) AS signal_count
            FROM worker_signals ws
            WHERE ws.run_id = ?
+             AND ws.signal_type IN ('finding', 'tool_output', 'error')
              AND ws.created_at >= datetime('now', ? || ' seconds')
            GROUP BY ws.agent_id
            ORDER BY avg_quality DESC""",

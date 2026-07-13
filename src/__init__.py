@@ -66,6 +66,7 @@ from .swarm.signals import (
     get_all_worker_signals, detect_loops, get_stuck_workers,
     compute_novelty_score, record_signal_from_capture, record_signal_from_heartbeat,
 )
+from .swarm.controller import Controller, controller_tick, ControllerDecision
 
 __all__ = [
     # DB
@@ -117,4 +118,6 @@ __all__ = [
     "record_worker_signal", "get_recent_worker_signals",
     "get_all_worker_signals", "detect_loops", "get_stuck_workers",
     "compute_novelty_score", "record_signal_from_capture", "record_signal_from_heartbeat",
+    # Controller (v0.7.0 Phase B)
+    "Controller", "controller_tick", "ControllerDecision",
 ]

@@ -48,6 +48,7 @@ POLL_WORK_SEC = 2
 POLL_HEARTBEAT_SEC = 10
 POLL_GOVERNANCE_SEC = 60
 POLL_POWER_SCHEDULE_SEC = 15  # 新: power schedule 轮询间隔
+POLL_CONTROLLER_SEC = 60      # Controller LLM 判决间隔 (Phase B)
 MAX_AGENTS_PER_RUN = 8  # 单次 run 最多同时活跃 Agent 数
 
 # Power schedule 参数
@@ -92,6 +93,7 @@ class SwarmOrchestrator:
         last_heartbeat = 0.0
         last_governance = 0.0
         last_power = 0.0
+        last_controller = 0.0  # Phase B
 
         _log.info("Orchestrator loop started for run_id=%s", run_id)
         self._stopped = False
@@ -124,6 +126,11 @@ class SwarmOrchestrator:
             if now - last_power >= POLL_POWER_SCHEDULE_SEC:
                 await self._safe_tick("power_schedule", self._tick_power_schedule, run_id)
                 last_power = now
+
+            # ⑥ Controller (每 POLL_CONTROLLER_SEC) — Phase B
+            if now - last_controller >= POLL_CONTROLLER_SEC:
+                await self._safe_tick("controller", self._tick_controller, run_id)
+                last_controller = now
 
             await asyncio.sleep(tick_interval)
 
@@ -527,6 +534,24 @@ class SwarmOrchestrator:
 
         except Exception as e:
             _log.warning("PowerSchedule: failed: %s", e)
+
+    async def _tick_controller(self, run_id: str):
+        """
+        Controller LLM 判决 — Phase B.
+        每 POLL_CONTROLLER_SEC 审视所有 Worker 信号，
+        调用 LLM (或降级规则) 做 kill/boost/spawn 决策。
+        """
+        try:
+            from .controller import Controller
+            ctrl = Controller(self.db, mode="rules")  # 默认规则模式，LLM 可选
+            decisions = await ctrl.tick(run_id)
+            if decisions:
+                _log.info("Controller: %d decisions for run=%s", len(decisions), run_id)
+                for d in decisions:
+                    self._log_behavior(run_id, "adaptation",
+                        f"Controller → {d.decision_type} {d.target_agent_id or d.target_role}: {d.reason[:80]}")
+        except Exception as e:
+            _log.warning("Controller: tick failed: %s", e)
 
     async def _balance_load(self, run_id: str):
         """
