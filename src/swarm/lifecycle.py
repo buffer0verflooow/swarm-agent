@@ -91,13 +91,18 @@ class AgentLifecycle:
         )
         self.db.conn.commit()
 
-    def beat(self, current_task_id: str = None, load: float = 0.0) -> None:
+    def beat(self, current_task_id: Optional[str] = None, load: float = 0.0,
+             tokens_spent_since: int = 0, findings_since: int = 0,
+             progress_marker: str = "") -> None:
         """
         每 HEARTBEAT_INTERVAL_SEC 秒调用，证明自己还活着。
         
         Args:
             current_task_id: 当前正在执行的任务 ID
             load: 0.0~1.0 负载分数，用于工作窃取调度
+            tokens_spent_since: 上次beat以来消耗的token数
+            findings_since: 上次beat以来的发现数量
+            progress_marker: 进度描述，如 "scanned 8/20 endpoints"
 
         Raises:
             RuntimeError: 心跳记录已被清理（Agent 可能已超时）
@@ -121,6 +126,23 @@ class AgentLifecycle:
             raise RuntimeError(
                 f"Agent {self.agent_id} 心跳记录不存在，可能已超时被 Orchestrator 清理"
             )
+
+        # Phase A: 自动记录 Worker Signal
+        try:
+            from .signals import record_signal_from_heartbeat
+            record_signal_from_heartbeat(
+                self.db,
+                run_id=self.run_id,
+                agent_id=self.agent_id,
+                load_score=load,
+                task_id=current_task_id or "",
+                progress_marker=progress_marker,
+                tokens_spent_since=tokens_spent_since,
+                findings_since=findings_since,
+                commit=True,
+            )
+        except Exception:
+            _log.debug("beat: signal recording failed (non-critical)", exc_info=True)
 
     def deregister(self) -> None:
         """Agent 正常退出时调用：标记 idle + 删除心跳（同一事务中）"""

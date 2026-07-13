@@ -680,6 +680,22 @@ def capture(
     # 9.7 自动 corroborating — 同 domain + 同 tags 的已有条目自动建立 lineage 关联
     _auto_corroborate(db, entry_id, classification)
 
+    # 9.8 Phase A: 自动记录 Worker Signal
+    try:
+        from ..swarm.signals import record_signal_from_capture
+        record_signal_from_capture(
+            db,
+            run_id=ctx.source_run_id or "",
+            agent_id=ctx.source_agent,
+            knowledge_entry_id=entry_id,
+            knowledge_type=classification["knowledge_type"],
+            content=ctx.content,
+            task_id=ctx.source_task_id or "",
+            commit=False,
+        )
+    except Exception:
+        _log.debug("capture: signal recording failed (non-critical)", exc_info=True)
+
     db.conn.commit()
     update_raw_agent_event(
         db,

@@ -61,6 +61,11 @@ from .swarm.exploration import (
     get_exploration_summary, get_exhausted_paths,
     build_exploration_context, get_unexplored_hints,
 )
+from .swarm.signals import (
+    record_worker_signal, get_recent_worker_signals,
+    get_all_worker_signals, detect_loops, get_stuck_workers,
+    compute_novelty_score, record_signal_from_capture, record_signal_from_heartbeat,
+)
 
 __all__ = [
     # DB
@@ -108,4 +113,8 @@ __all__ = [
     "record_trace", "get_explored_for_target",
     "get_exploration_summary", "get_exhausted_paths",
     "build_exploration_context", "get_unexplored_hints",
+    # Worker Signals (v0.7.0 Phase A)
+    "record_worker_signal", "get_recent_worker_signals",
+    "get_all_worker_signals", "detect_loops", "get_stuck_workers",
+    "compute_novelty_score", "record_signal_from_capture", "record_signal_from_heartbeat",
 ]
