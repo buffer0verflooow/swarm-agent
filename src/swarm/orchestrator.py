@@ -49,6 +49,7 @@ POLL_HEARTBEAT_SEC = 10
 POLL_GOVERNANCE_SEC = 60
 POLL_POWER_SCHEDULE_SEC = 15  # 新: power schedule 轮询间隔
 POLL_CONTROLLER_SEC = 60      # Controller LLM 判决间隔 (Phase B)
+POLL_HEALTH_SEC = 30          # 健康检查间隔
 MAX_AGENTS_PER_RUN = 8  # 单次 run 最多同时活跃 Agent 数
 
 # Power schedule 参数
@@ -94,6 +95,7 @@ class SwarmOrchestrator:
         last_governance = 0.0
         last_power = 0.0
         last_controller = 0.0  # Phase B
+        last_health = 0.0      # health check
 
         _log.info("Orchestrator loop started for run_id=%s", run_id)
         self._stopped = False
@@ -131,6 +133,11 @@ class SwarmOrchestrator:
             if now - last_controller >= POLL_CONTROLLER_SEC:
                 await self._safe_tick("controller", self._tick_controller, run_id)
                 last_controller = now
+
+            # ⑦ Health check (每 POLL_HEALTH_SEC)
+            if now - last_health >= POLL_HEALTH_SEC:
+                await self._safe_tick("health", self._tick_health, run_id)
+                last_health = now
 
             await asyncio.sleep(tick_interval)
 
@@ -517,11 +524,30 @@ class SwarmOrchestrator:
                 new_strategy = "balanced"
 
             if new_strategy != old_strategy:
-                self.db.execute(
-                    "UPDATE swarm_runs SET budget_strategy = ? WHERE run_id = ?",
-                    (new_strategy, run_id),
-                )
-                self.db.conn.commit()
+                # 乐观锁：读取当前版本，CAS 更新
+                for attempt in range(2):
+                    row = self.db.fetch_one(
+                        "SELECT strategy_version FROM swarm_runs WHERE run_id = ?",
+                        (run_id,),
+                    )
+                    if not row:
+                        break
+                    current_ver = row["strategy_version"]
+                    self.db.execute(
+                        "UPDATE swarm_runs SET budget_strategy = ?, strategy_version = strategy_version + 1 WHERE run_id = ? AND strategy_version = ?",
+                        (new_strategy, run_id, current_ver),
+                    )
+                    if self.db.conn.total_changes > 0:
+                        self.db.conn.commit()
+                        break
+                    _log.debug("PowerSchedule: budget_strategy CAS conflict, retry %d/2", attempt + 1)
+                else:
+                    # 降级：无锁更新
+                    self.db.execute(
+                        "UPDATE swarm_runs SET budget_strategy = ?, strategy_version = strategy_version + 1 WHERE run_id = ?",
+                        (new_strategy, run_id),
+                    )
+                    self.db.conn.commit()
                 _log.info("PowerSchedule: %s → %s (budget=%.0f%%, vuln_density=%.0f%%)",
                           old_strategy, new_strategy, budget_ratio * 100, vuln_density * 100)
                 self._log_behavior(run_id, "adaptation",
@@ -552,7 +578,7 @@ class SwarmOrchestrator:
         """
         try:
             from .controller import Controller
-            ctrl = Controller(self.db, mode="rules")  # 默认规则模式，LLM 可选
+            ctrl = Controller(self.db, mode="llm")  # LLM 驱动 — 架构设计意图；LLM 失败时自动降级 rules
             decisions = await ctrl.tick(run_id)
             if decisions:
                 _log.info("Controller: %d decisions for run=%s", len(decisions), run_id)
@@ -705,6 +731,46 @@ class SwarmOrchestrator:
                     parts.append(f"- [{row['knowledge_type']}] L{row['level']}: {row['title'][:100]}")
 
         return "\n".join(parts)
+
+    async def _tick_health(self, run_id: str):
+        """健康检查: 验证关键子模块可用，Controller 活跃，表不溢出。"""
+        issues = []
+
+        # Check sub-module importability
+        for mod_name in ("src.swarm.signals", "src.swarm.controller",
+                         "src.swarm.exploration", "src.governance.engine"):
+            try:
+                import importlib
+                importlib.import_module(mod_name.replace("/", "."))
+            except Exception as e:
+                issues.append(f"import_failed:{mod_name}:{e}")
+
+        # Check controller last success
+        try:
+            last_decision = self.db.fetch_one(
+                "SELECT MAX(created_at) as last_ts FROM controller_decisions"
+            )
+            if last_decision and last_decision["last_ts"]:
+                _log.debug("HealthCheck: last controller decision at %s", last_decision["last_ts"])
+        except Exception as e:
+            issues.append(f"controller_audit_query_failed:{e}")
+
+        # Check worker_signals table size
+        try:
+            count = self.db.fetch_one("SELECT COUNT(*) as c FROM worker_signals")
+            if count and count["c"] > 100000:
+                issues.append(f"worker_signals_table_large:{count['c']} rows")
+        except Exception as e:
+            issues.append(f"worker_signals_count_failed:{e}")
+
+        if issues:
+            for issue in issues:
+                _log.warning("HealthCheck: %s", issue)
+            # Log via regular behavior table with valid type
+            self._log_behavior(run_id, "optimization",
+                f"Health issues: {'; '.join(issues)}")
+        else:
+            _log.debug("HealthCheck: all ok for run=%s", run_id)
 
     def _log_behavior(self, run_id: str, behavior_type: str, description: str, agents: list = None):
         """记录涌现行为到 swarm_behaviors 表"""

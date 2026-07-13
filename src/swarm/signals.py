@@ -301,41 +301,41 @@ def compute_novelty_score(
     if dup:
         return 0.0  # 完全重复
 
-    # 3. 粗略 token 重叠估计
-    #    取 content 的前 100 个 token，检查是否有类似内容
-    tokens = set(content.lower().split()[:100])
-    if len(tokens) < 5:
-        return 0.5  # 太短，无法判断
+    # 3. MinHash-based novelty estimation (Jaccard similarity via MinHash signatures)
+    content_sig = _minhash_signature(content, num_perm=128)
+    if len(content_sig) == 0 or all(v == 0 for v in content_sig[:8]):
+        return 0.5  # too short to meaningful estimate
 
-    # 查最近 20 条同 agent 的 signal 的 raw_output_snippet
-    recent_snippets = db.fetch_all(
+    # Check against recent signals using MinHash similarities
+    recent = db.fetch_all(
         """SELECT raw_output_snippet FROM worker_signals
            WHERE agent_id = ? AND run_id = ?
            ORDER BY created_at DESC LIMIT 20""",
         (agent_id, run_id),
     )
 
-    if not recent_snippets:
+    if not recent:
         return 1.0
 
-    max_overlap = 0.0
-    for row in recent_snippets:
+    max_similarity = 0.0
+    for row in recent:
         snippet = (row["raw_output_snippet"] or "").lower()
-        if not snippet:
+        if not snippet or len(snippet.split()) < 3:
             continue
-        snippet_tokens = set(snippet.split())
-        if not snippet_tokens:
+        snippet_sig = _minhash_signature(snippet, num_perm=128)
+        if not snippet_sig or all(v == 0 for v in snippet_sig[:8]):
             continue
-        overlap = len(tokens & snippet_tokens) / len(tokens)
-        max_overlap = max(max_overlap, overlap)
+        sim = _jaccard_from_signatures(content_sig, snippet_sig)
+        max_similarity = max(max_similarity, sim)
 
-    if max_overlap > 0.8:
-        return 0.1  # 高度相似
-    elif max_overlap > 0.6:
+    # Map Jaccard similarity to novelty score (inverse relationship)
+    if max_similarity > 0.8:
+        return 0.1  # highly similar — near-duplicate
+    elif max_similarity > 0.6:
         return 0.3
-    elif max_overlap > 0.4:
+    elif max_similarity > 0.4:
         return 0.5
-    elif max_overlap > 0.2:
+    elif max_similarity > 0.2:
         return 0.7
     else:
         return 1.0
@@ -441,3 +441,43 @@ def _check_loop_now(db, agent_id: str, current_novelty: float) -> bool:
         return True
 
     return False
+
+
+def _minhash_signature(text: str, num_perm: int = 128):
+    """Compute MinHash signature for a text using hashlib-based hash functions.
+
+    Tokenizes into word 3-grams (shingles) and computes a MinHash signature
+    using multiple seeded MD5 hashes. Returns a list of integers.
+    """
+    import struct
+
+    words = text.lower().split()
+    if len(words) < 3:
+        # Too short for 3-grams; use individual words
+        shingles = set(words)
+    else:
+        shingles = set()
+        for i in range(len(words) - 2):
+            shingles.add(" ".join(words[i:i + 3]))
+
+    if not shingles:
+        return [0] * num_perm
+
+    sig = []
+    for seed in range(num_perm):
+        min_hash = float("inf")
+        for shingle in shingles:
+            h = int(hashlib.md5(f"{seed}:{shingle}".encode()).hexdigest(), 16)
+            if h < min_hash:
+                min_hash = h
+        sig.append(min_hash)
+    return sig
+
+
+def _jaccard_from_signatures(sig1, sig2):
+    """Estimate Jaccard similarity from two MinHash signatures."""
+    n = min(len(sig1), len(sig2))
+    if n == 0:
+        return 0.0
+    matches = sum(1 for i in range(n) if sig1[i] == sig2[i])
+    return matches / n

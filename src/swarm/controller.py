@@ -351,14 +351,28 @@ class Controller:
                     confidence=0.75,
                 ))
 
-        # Too few workers → spawn
+        # Too few workers → spawn with context from recent knowledge entries
         alive_after_kill = state["active_workers"] - len([d for d in decisions if d.decision_type == "kill"])
         if alive_after_kill < RULE_SPAWN_WHEN_FEWER_THAN:
-            decisions.append(ControllerDecision(
+            # Gather context from recent knowledge entries so new scanner has direction
+            context_ids = []
+            try:
+                recent_entries = self.db.fetch_all(
+                    "SELECT id FROM knowledge_entries WHERE source_run_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 3",
+                    (run_id,),
+                )
+                context_ids = [r["id"] for r in recent_entries]
+            except Exception:
+                pass
+
+            d = ControllerDecision(
                 "spawn", target_role="scanner",
                 reason=f"only {alive_after_kill} workers left after kills, need more",
                 confidence=0.80,
-            ))
+            )
+            if context_ids:
+                d.metadata["context_entry_ids"] = context_ids
+            decisions.append(d)
 
         # Budget nearly exhausted + no HIGH findings → spawn analyst to focus
         if state["budget_ratio"] > 0.7:
@@ -399,28 +413,33 @@ class Controller:
     def _execute_kill(self, run_id: str, d: ControllerDecision):
         """Kill Worker: 标记 agent_profiles 为 deprecated，取消 pending spawn。"""
         aid = d.target_agent_id
-        self.db.execute(
-            "UPDATE agent_profiles SET status = 'deprecated', updated_at = datetime('now') WHERE agent_id = ?",
-            (aid,),
-        )
-        self.db.execute(
-            "DELETE FROM agent_heartbeats WHERE agent_id = ?", (aid,),
-        )
-        # 拒绝该 agent 的所有 pending spawn 请求
-        self.db.execute(
-            """UPDATE spawn_requests SET status = 'rejected',
-               reason = reason || ' [killed by controller]'
-               WHERE spawned_agent_id = ? AND status IN ('pending','spawning')""",
-            (aid,),
-        )
-        # 释放该 agent 的 running tasks → pending
-        self.db.execute(
-            """UPDATE agent_tasks SET status = 'pending', agent_id = NULL, claimed_at = NULL
-               WHERE agent_id = ? AND status = 'running'""",
-            (aid,),
-        )
-        self.db.conn.commit()
-        _log.info("Controller: killed %s — %s", aid[:12], d.reason[:60])
+        self.db.conn.execute("BEGIN IMMEDIATE")
+        try:
+            self.db.execute(
+                "UPDATE agent_profiles SET status = 'deprecated', updated_at = datetime('now') WHERE agent_id = ?",
+                (aid,),
+            )
+            self.db.execute(
+                "DELETE FROM agent_heartbeats WHERE agent_id = ?", (aid,),
+            )
+            # 拒绝该 agent 的所有 pending spawn 请求
+            self.db.execute(
+                """UPDATE spawn_requests SET status = 'rejected',
+                   reason = reason || ' [killed by controller]'
+                   WHERE spawned_agent_id = ? AND status IN ('pending','spawning')""",
+                (aid,),
+            )
+            # 释放该 agent 的 running tasks → pending
+            self.db.execute(
+                """UPDATE agent_tasks SET status = 'pending', agent_id = NULL, claimed_at = NULL
+                   WHERE agent_id = ? AND status = 'running'""",
+                (aid,),
+            )
+            self.db.conn.commit()
+            _log.info("Controller: killed %s — %s", aid[:12], d.reason[:60])
+        except Exception:
+            self.db.conn.rollback()
+            raise
 
     def _execute_boost(self, run_id: str, d: ControllerDecision):
         """Boost Worker: 提升其 pending task 的优先级。"""
@@ -436,6 +455,7 @@ class Controller:
     def _execute_spawn(self, run_id: str, d: ControllerDecision):
         """Spawn new Worker: 通过 spawn_requests 信号 (worker_mode=true)。"""
         from .spawner import request_spawn
+        context_entry_ids = d.metadata.get("context_entry_ids", [])
         request_spawn(
             self.db,
             run_id=run_id,
@@ -443,6 +463,7 @@ class Controller:
             requested_role=d.target_role,
             reason=f"Controller auto-spawn: {d.reason}",
             priority=70,
+            context_entry_ids=context_entry_ids,
         )
         # Mark as worker mode spawn via metadata
         self.db.execute(
@@ -453,14 +474,34 @@ class Controller:
         _log.info("Controller: spawn %s — %s", d.target_role, d.reason[:60])
 
     def _execute_adjust_budget(self, run_id: str, d: ControllerDecision):
-        """调整全局 budget strategy。"""
+        """调整全局 budget strategy（乐观锁保护）。"""
         strategy = d.metadata.get("strategy", "balanced")
+        # 乐观锁：读取当前版本，CAS 更新
+        for attempt in range(2):
+            row = self.db.fetch_one(
+                "SELECT strategy_version FROM swarm_runs WHERE run_id = ?",
+                (run_id,),
+            )
+            if not row:
+                break
+            current_ver = row["strategy_version"]
+            self.db.execute(
+                "UPDATE swarm_runs SET budget_strategy = ?, strategy_version = strategy_version + 1 WHERE run_id = ? AND strategy_version = ?",
+                (strategy, run_id, current_ver),
+            )
+            if self.db.conn.total_changes > 0:
+                self.db.conn.commit()
+                _log.info("Controller: budget strategy → %s (ver %d)", strategy, current_ver + 1)
+                return
+            # 冲突：重试
+            _log.debug("Controller: budget_strategy CAS conflict, retry %d/2", attempt + 1)
+        # 降级：无锁更新
         self.db.execute(
-            "UPDATE swarm_runs SET budget_strategy = ? WHERE run_id = ?",
+            "UPDATE swarm_runs SET budget_strategy = ?, strategy_version = strategy_version + 1 WHERE run_id = ?",
             (strategy, run_id),
         )
         self.db.conn.commit()
-        _log.info("Controller: budget strategy → %s", strategy)
+        _log.info("Controller: budget strategy → %s (fallback, no CAS)", strategy)
 
     def _execute_redirect(self, run_id: str, d: ControllerDecision):
         """Redirect Worker: 更新其 task focus_params（以注入新方向）。"""
