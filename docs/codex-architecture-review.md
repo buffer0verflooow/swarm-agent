@@ -448,3 +448,53 @@ test_swarm_loop.py:    ALL TESTS PASSED ✅
 - `test_controller.py` 使用嵌入式 SQLite，不运行 migration，因此 `strategy_version` 列缺失但调整 budget 测试仍通过（fallback 路径）
 - MinHash 计算在长文本（>500 words）上可能较慢，`compute_novelty_score()` 每个调用约 2-5ms；如需进一步优化可考虑进程内存 L1 cache（P1 建议的 novelty cache）
 - Codex CLI 本次因 API 高负载限流未能执行，所有修复通过直接 patch 应用并通过测试验证
+
+---
+
+## Daily Auto-Fix 2026-07-15
+
+> 执行方式：自动化 cron job（全量验证 — 所有修复已生效，无新变更）
+
+### 验证结果
+
+所有 P0/P1 修复从 2026-07-14 持续有效，本次为完整性验证运行。
+
+#### P0 修复验证 ✅
+
+| 修复项 | 文件 | 状态 |
+|--------|------|------|
+| Controller LLM 模式 | `orchestrator.py:581` | ✅ `mode="llm"` 已生效 |
+| budget_strategy 乐观锁 (Controller) | `controller.py:480-498` | ✅ CAS with `strategy_version` |
+| budget_strategy 乐观锁 (PowerSchedule) | `orchestrator.py:528-550` | ✅ CAS with `strategy_version` |
+| kill 显式事务 | `controller.py:416-442` | ✅ BEGIN IMMEDIATE / COMMIT / ROLLBACK |
+
+#### P1 修复验证 ✅
+
+| 修复项 | 文件 | 状态 |
+|--------|------|------|
+| MinHash novelty_score | `signals.py:446-483` | ✅ `_minhash_signature()` + `_jaccard_from_signatures()` |
+| 健康检查 tick | `orchestrator.py:735-773` | ✅ `POLL_HEALTH_SEC=30`, `_tick_health()` 含子模块检查 + signal 表大小监控 |
+| Worker spawn 注入上下文 | `controller.py:358-375` | ✅ 查询 `knowledge_entries` 作为 context_entry_ids |
+
+#### Migration 验证 ✅
+
+| Migration | 状态 |
+|-----------|------|
+| 013_budget_strategy_lock.sql | ✅ 文件存在，strategy_version 列已定义 |
+
+### 测试结果
+
+```
+test_controller.py:        14/14 passed ✅
+test_worker_signals.py:    27/27 passed ✅
+test_exploration_traces.py: 25/25 passed ✅
+test_worker_mode.py:        9/9 passed ✅
+test_swarm_loop.py:        ALL TESTS PASSED ✅
+```
+
+### 结论
+
+- 无新代码变更 — 所有 2026-07-14 的修复持续有效
+- 全量测试套件通过率 100%
+- 工作树干净，无待提交变更
+- 无需 Codex 介入（无新问题发现）
