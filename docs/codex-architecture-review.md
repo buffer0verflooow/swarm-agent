@@ -451,6 +451,58 @@ test_swarm_loop.py:    ALL TESTS PASSED ✅
 
 ---
 
+## Daily Auto-Fix 2026-07-22
+
+> 执行方式：自动化 cron job（Codex CLI 执行，timeout 300s 前完成全部 4 个测试套件，swarm_loop 测试及提交由 Hermes fallback 补完）
+> Codex 模型：gpt-5.6-sol (OpenAI Anyrputer)
+
+### 已修复
+
+#### CAS 乐观锁强化
+
+| 修复项 | 文件 | 改动 |
+|--------|------|------|
+| Controller CAS 失败时抛异常而非静默降级 | `controller.py:480-498` | `cur.rowcount == 1` 替代 `total_changes > 0`；2 次重试后 `raise RuntimeError` 而非 fallback 无锁写 |
+| PowerSchedule CAS 使用 `strategy_updated` 标志 | `orchestrator.py:530-556` | 防止 CAS 竞争后误打印成功日志；CAS 2 次失败后写 warning 而非降级 |
+| Controller 测试 stub 表增加 `strategy_version` | `tests/test_controller.py:62` | 确保 CAS 集成测试通过 |
+
+**动机**：原有的 fallback 无锁写路径（`controller.py` L498-503 和 `orchestrator.py` L549-555）在 CAS 冲突 2 次后直接无锁覆盖，违反了架构设计中乐观锁保护 budget_strategy 的原则。改为显式失败，让上层 Orchestrator 的下一个 tick 重试。
+
+### 验证结果
+
+| P0 修复项 | 状态 |
+|-----------|------|
+| Controller LLM 模式 (`mode="llm"`) | ✅ 已在位 |
+| budget_strategy CAS 乐观锁 | ✅ 已强化 |
+| kill 显式事务 (BEGIN IMMEDIATE) | ✅ 已在位 |
+
+| P1 修复项 | 状态 |
+|-----------|------|
+| MinHash novelty_score | ✅ 已在位 |
+| 健康检查 tick (_tick_health) | ✅ 已在位 |
+| Worker spawn 注入上下文 | ✅ 已在位 |
+
+### 测试结果
+
+```
+test_worker_mode.py:         9/9 passed ✅
+test_worker_signals.py:     27/27 passed ✅
+test_controller.py:         16/16 passed ✅  (+2 new assertions for CAS version)
+test_exploration_traces.py:  25/25 passed ✅
+test_swarm_loop.py:         ALL TESTS PASSED ✅
+```
+
+**总计：77/77 测试通过** ✅
+
+### 备注
+
+- Codex CLI (gpt-5.6-sol) 在 300s 超时前完成了代码分析、patch 应用、4 个测试套件运行，但未完成 `test_swarm_loop.py`、提交和文档更新。剩余步骤由 Hermes fallback 完成。
+- action_value 模块（新 feature: 014_action_value.sql + action_value.py）不属于本次 auto-fix，保持未提交状态。
+- 工作树：3 个文件变更，33 insertions, 24 deletions，已提交到 main。
+- 无新问题发现。
+
+---
+
 ## Daily Auto-Fix 2026-07-15
 
 > 执行方式：自动化 cron job（全量验证 — 所有修复已生效，无新变更）

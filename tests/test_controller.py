@@ -59,7 +59,7 @@ def setup_db():
 
     # Stub tables needed by controller
     db.conn.executescript("""
-        CREATE TABLE IF NOT EXISTS swarm_runs (run_id TEXT, token_budget INTEGER, tokens_spent INTEGER, budget_strategy TEXT);
+        CREATE TABLE IF NOT EXISTS swarm_runs (run_id TEXT, token_budget INTEGER, tokens_spent INTEGER, budget_strategy TEXT, strategy_version INTEGER DEFAULT 0);
         CREATE TABLE IF NOT EXISTS agent_profiles (agent_id TEXT, role TEXT, status TEXT, updated_at TEXT, model_profile_id TEXT, model_preference TEXT);
         CREATE TABLE IF NOT EXISTS agent_heartbeats (agent_id TEXT, run_id TEXT, last_beat TEXT, load_score REAL, current_task_id TEXT, stealable INTEGER DEFAULT 1);
         CREATE TABLE IF NOT EXISTS spawn_requests (request_id TEXT, run_id TEXT, requesting_agent TEXT, requested_role TEXT, reason TEXT, priority INTEGER, status TEXT, chain_depth INTEGER, max_chain_depth INTEGER, spawned_agent_id TEXT, dedup_key TEXT, claim_token TEXT, claimed_by TEXT, context_entry_ids TEXT, parent_task_id TEXT, expires_at TEXT);
@@ -220,6 +220,13 @@ def test_budget_adjust(db, run_id):
         check("strategy = depth", 
               budget_decisions[0].metadata.get("strategy") == "depth",
               f"got {budget_decisions[0].metadata}")
+        run = db.fetch_one(
+            "SELECT budget_strategy, strategy_version FROM swarm_runs WHERE run_id = ?",
+            (run_id,),
+        )
+        check("strategy persisted via CAS", run and run["budget_strategy"] == "depth")
+        check("strategy version incremented", run and run["strategy_version"] == 1,
+              f"got {run['strategy_version'] if run else 'missing run'}")
 
 
 def test_controller_noop(db):

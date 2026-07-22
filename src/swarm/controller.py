@@ -483,25 +483,20 @@ class Controller:
                 (run_id,),
             )
             if not row:
-                break
-            current_ver = row["strategy_version"]
-            self.db.execute(
+                raise ValueError(f"run not found: {run_id}")
+            current_ver = int(row["strategy_version"] or 0)
+            cur = self.db.execute(
                 "UPDATE swarm_runs SET budget_strategy = ?, strategy_version = strategy_version + 1 WHERE run_id = ? AND strategy_version = ?",
                 (strategy, run_id, current_ver),
             )
-            if self.db.conn.total_changes > 0:
+            if cur.rowcount == 1:
                 self.db.conn.commit()
                 _log.info("Controller: budget strategy → %s (ver %d)", strategy, current_ver + 1)
                 return
             # 冲突：重试
+            self.db.conn.rollback()
             _log.debug("Controller: budget_strategy CAS conflict, retry %d/2", attempt + 1)
-        # 降级：无锁更新
-        self.db.execute(
-            "UPDATE swarm_runs SET budget_strategy = ?, strategy_version = strategy_version + 1 WHERE run_id = ?",
-            (strategy, run_id),
-        )
-        self.db.conn.commit()
-        _log.info("Controller: budget strategy → %s (fallback, no CAS)", strategy)
+        raise RuntimeError(f"budget_strategy CAS failed after 2 attempts: {run_id}")
 
     def _execute_redirect(self, run_id: str, d: ControllerDecision):
         """Redirect Worker: 更新其 task focus_params（以注入新方向）。"""

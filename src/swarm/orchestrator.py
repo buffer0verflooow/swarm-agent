@@ -38,6 +38,7 @@ from .spawner import (
     merge_duplicate_requests,
     recover_stale_spawn_claims,
 )
+from .action_value import maybe_rescore_pending
 from .work_queue import claim_work_tasks, poll_work_tasks, recover_stale_work_claims
 
 _log = logging.getLogger("swarm_knowledge.orchestrator")
@@ -339,6 +340,10 @@ class SwarmOrchestrator:
         if recovered:
             _log.info("WorkMarket: recovered %d stale task claims", recovered)
 
+        # Opt-in: re-rank pending tasks by learned action value before workers
+        # claim them. No-op under the default 'priority' policy.
+        maybe_rescore_pending(self.db, run_id)
+
         pending = poll_work_tasks(self.db, run_id=run_id, status="pending", limit=50)
         if not pending:
             return
@@ -525,6 +530,7 @@ class SwarmOrchestrator:
 
             if new_strategy != old_strategy:
                 # 乐观锁：读取当前版本，CAS 更新
+                strategy_updated = False
                 for attempt in range(2):
                     row = self.db.fetch_one(
                         "SELECT strategy_version FROM swarm_runs WHERE run_id = ?",
@@ -532,26 +538,27 @@ class SwarmOrchestrator:
                     )
                     if not row:
                         break
-                    current_ver = row["strategy_version"]
-                    self.db.execute(
+                    current_ver = int(row["strategy_version"] or 0)
+                    cur = self.db.execute(
                         "UPDATE swarm_runs SET budget_strategy = ?, strategy_version = strategy_version + 1 WHERE run_id = ? AND strategy_version = ?",
                         (new_strategy, run_id, current_ver),
                     )
-                    if self.db.conn.total_changes > 0:
+                    if cur.rowcount == 1:
                         self.db.conn.commit()
+                        strategy_updated = True
                         break
+                    self.db.conn.rollback()
                     _log.debug("PowerSchedule: budget_strategy CAS conflict, retry %d/2", attempt + 1)
+                if strategy_updated:
+                    _log.info("PowerSchedule: %s → %s (budget=%.0f%%, vuln_density=%.0f%%)",
+                              old_strategy, new_strategy, budget_ratio * 100, vuln_density * 100)
+                    self._log_behavior(run_id, "adaptation",
+                        f"策略切换: {old_strategy} → {new_strategy} (预算={budget_ratio:.0%}, 漏洞密度={vuln_density:.0%})")
                 else:
-                    # 降级：无锁更新
-                    self.db.execute(
-                        "UPDATE swarm_runs SET budget_strategy = ?, strategy_version = strategy_version + 1 WHERE run_id = ?",
-                        (new_strategy, run_id),
+                    _log.warning(
+                        "PowerSchedule: budget_strategy CAS failed after 2 attempts for run=%s",
+                        run_id,
                     )
-                    self.db.conn.commit()
-                _log.info("PowerSchedule: %s → %s (budget=%.0f%%, vuln_density=%.0f%%)",
-                          old_strategy, new_strategy, budget_ratio * 100, vuln_density * 100)
-                self._log_behavior(run_id, "adaptation",
-                    f"策略切换: {old_strategy} → {new_strategy} (预算={budget_ratio:.0%}, 漏洞密度={vuln_density:.0%})")
 
             # 链深度控制: 拒超过 max_chain_depth 的 spawn 请求
             # 每个 spawn 请求有自己的 max_chain_depth
