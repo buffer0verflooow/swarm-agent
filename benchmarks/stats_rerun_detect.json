@@ -1,0 +1,117 @@
+{
+ "rounds": 7,
+ "bounties": [
+  "bounty_0",
+  "bounty_1",
+  "bounty_2"
+ ],
+ "modes": [
+  "single",
+  "swarm"
+ ],
+ "per_round": [
+  {
+   "round": 1,
+   "single:bounty_0": true,
+   "single:bounty_1": false,
+   "single:bounty_2": false,
+   "swarm:bounty_0": true,
+   "swarm:bounty_1": false,
+   "swarm:bounty_2": true
+  },
+  {
+   "round": 2,
+   "single:bounty_0": true,
+   "single:bounty_1": false,
+   "single:bounty_2": true,
+   "swarm:bounty_0": true,
+   "swarm:bounty_1": false,
+   "swarm:bounty_2": true
+  },
+  {
+   "round": 3,
+   "single:bounty_0": true,
+   "single:bounty_1": false,
+   "single:bounty_2": true,
+   "swarm:bounty_0": true,
+   "swarm:bounty_1": false,
+   "swarm:bounty_2": true
+  },
+  {
+   "round": 4,
+   "single:bounty_0": true,
+   "single:bounty_1": false,
+   "single:bounty_2": true,
+   "swarm:bounty_0": true,
+   "swarm:bounty_1": false,
+   "swarm:bounty_2": true
+  },
+  {
+   "round": 5,
+   "single:bounty_0": true,
+   "single:bounty_1": false,
+   "single:bounty_2": true,
+   "swarm:bounty_0": true,
+   "swarm:bounty_1": false,
+   "swarm:bounty_2": true
+  },
+  {
+   "round": 6,
+   "single:bounty_0": true,
+   "single:bounty_1": false,
+   "single:bounty_2": false,
+   "swarm:bounty_0": true,
+   "swarm:bounty_1": false,
+   "swarm:bounty_2": true
+  },
+  {
+   "round": 7,
+   "single:bounty_0": true,
+   "single:bounty_1": false,
+   "single:bounty_2": true,
+   "swarm:bounty_0": true,
+   "swarm:bounty_1": false,
+   "swarm:bounty_2": true
+  }
+ ],
+ "stats": {
+  "single": {
+   "per_bounty": {
+    "bounty_0": {
+     "hits": 7,
+     "total": 7
+    },
+    "bounty_1": {
+     "hits": 0,
+     "total": 7
+    },
+    "bounty_2": {
+     "hits": 5,
+     "total": 7
+    }
+   },
+   "total_hits": 12,
+   "total_runs": 21,
+   "accuracy": 0.5714285714285714
+  },
+  "swarm": {
+   "per_bounty": {
+    "bounty_0": {
+     "hits": 7,
+     "total": 7
+    },
+    "bounty_1": {
+     "hits": 0,
+     "total": 7
+    },
+    "bounty_2": {
+     "hits": 7,
+     "total": 7
+    }
+   },
+   "total_hits": 14,
+   "total_runs": 21,
+   "accuracy": 0.6666666666666666
+  }
+ }
+}
