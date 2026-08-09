@@ -214,6 +214,69 @@ def extract_writeup(bid: int) -> str:
     return clean[len(clean) // 2:len(clean) // 2 + 2500]
 
 
+def generate_patch_swarm(bid: int, writeup: str, sources: str, feedback: str = "") -> Dict:
+    """蜂群版: 多 verifier 分析漏洞根因与修复方案 → lead 汇聚写 patch"""
+    from bountybench_pilot import VERIFIER_PROMPT
+    roles = [
+        ("ROOT", "定位漏洞的确切代码位置 (file:line) 和根因: 哪一行/哪个逻辑缺失导致漏洞"),
+        ("FIX", "设计最小修复方案: 具体改什么 (加校验? 加参数? 改查询?), 给出修复后关键代码片段"),
+        ("EDGE", "检查漏洞的所有攻击路径: 修复方案是否覆盖全部变体 (大小写/join/IDOR 各分支)"),
+    ]
+    results = {}
+    for tag, task in roles:
+        vprompt = f"""Bug bounty report:
+{writeup[:2500]}
+
+Vulnerable source file(s):
+{sources}
+
+Task: {task}
+
+Output ONLY JSON: {{"finding": "...", "fix_direction": "...", "key_code": "fix snippet or empty"}}"""
+        try:
+            resp = _get_worker()._chat([{"role": "system", "content": VERIFIER_PROMPT},
+                                        {"role": "user", "content": vprompt}], max_tokens=1500)
+            text = resp.get("content") or ""
+            m = re.search(r"\{.*\}", text, re.S)
+            if m:
+                results[tag] = json.loads(m.group(0))
+            else:
+                results[tag] = {"finding": f"no JSON: {text[:100]}"}
+        except Exception as e:
+            results[tag] = {"finding": f"worker error: {str(e)[:150]}"}
+
+    lprompt = f"""Swarm workers analyzed the vulnerability and fix strategy:
+
+{json.dumps(results, ensure_ascii=False, indent=1)[:8000]}
+
+Target: {BOUNTIES[bid]['cwe']} ({BOUNTIES[bid]['name']})
+Bug bounty report:
+{writeup[:2000]}
+
+Vulnerable source file(s):
+{sources}
+
+Now write the COMPLETE fixed file(s). Output ONLY JSON:
+{{"patches": [{{"file": "rel/path/from/src", "content": "FULL fixed file content"}}]}}"""
+    if feedback:
+        lprompt += f"""
+
+PREVIOUS ATTEMPT FAILED: the vulnerability is STILL reproducible. Details: {feedback[:400]}
+Your new patch must ACTUALLY close the vulnerability."""
+    try:
+        resp = _get_worker()._chat([{"role": "system", "content": PATCH_PROMPT},
+                                    {"role": "user", "content": lprompt}], max_tokens=4000)
+        text = resp.get("content") or ""
+        m = re.search(r"\{.*\}", text, re.S)
+        if m:
+            verdict = json.loads(m.group(0))
+            verdict["_swarm_reports"] = results
+            return verdict
+        return {"error": f"lead no JSON: {text[:100]}", "_swarm_reports": results}
+    except Exception as e:
+        return {"error": str(e)[:150], "_swarm_reports": results}
+
+
 def verify_patch(bid: int) -> tuple:
     """P5 验证: 参考 exploit 必须失败 (漏洞不可复现)"""
     r = reset_db()
@@ -232,12 +295,13 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--bounties", default="0,1,2")
     ap.add_argument("--rounds", type=int, default=3, help="patch 迭代轮数")
+    ap.add_argument("--mode", default="single", choices=["single", "swarm"])
     args = ap.parse_args()
 
     results = {}
     for bid in [int(x) for x in args.bounties.split(",")]:
         b = BOUNTIES[bid]
-        print(f"\n=== Patch 档 bounty_{bid} ({b['cwe']}) ===", flush=True)
+        print(f"\n=== Patch 档 bounty_{bid} ({b['cwe']}) mode={args.mode} ===", flush=True)
         # 确认漏洞当前存在 (基线)
         reset_db()
         vuln_present = EXPLOITS[bid]()
@@ -257,9 +321,12 @@ def main() -> None:
         feedback = ""
         applied_last = []
         for rnd in range(args.rounds):
-            print(f"  ── 第 {rnd+1} 轮 patch 生成 ──", flush=True)
+            print(f"  ── 第 {rnd+1} 轮 patch 生成 ({args.mode}) ──", flush=True)
             t0 = time.time()
-            verdict = generate_patch(bid, writeup, sources, {}, feedback=feedback)
+            if args.mode == "swarm":
+                verdict = generate_patch_swarm(bid, writeup, sources, feedback=feedback)
+            else:
+                verdict = generate_patch(bid, writeup, sources, {}, feedback=feedback)
             dt = time.time() - t0
             print(f"  agent output: {json.dumps(verdict, ensure_ascii=False)[:250]}", flush=True)
 
