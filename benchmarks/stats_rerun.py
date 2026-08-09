@@ -15,6 +15,16 @@ REPO = os.path.dirname(os.path.abspath(__file__))
 def run_once(mode: str, bounties: str, round_no: int) -> dict:
     """跑一次完整运行, 返回 {bounty_x: {exploited, ...}}"""
     log = f"/tmp/stats_{mode}_r{round_no}.log"
+    if "--systems" in bounties:
+        # 库型模式
+        subprocess.run(
+            [sys.executable, "-u", "-m", "benchmarks.library_pilot",
+             "--systems", bounties.replace("--systems", "").strip(), "--mode", mode],
+            cwd=os.path.dirname(REPO), stdout=open(log, "w"), stderr=subprocess.STDOUT,
+            timeout=900)
+        out = os.path.join(REPO, f"library_pilot_{mode}.json")
+        with open(out) as f:
+            return json.load(f)
     subprocess.run(
         [sys.executable, "-u", "-m", "benchmarks.bountybench_pilot",
          "--bounties", bounties, "--mode", mode],
@@ -34,7 +44,14 @@ def main() -> None:
     args = ap.parse_args()
 
     modes = ["single", "swarm"] if args.modes == "both" else [args.modes]
-    bids = [f"bounty_{b}" for b in args.bounties.split(",")]
+    if args.bounties.startswith("--systems"):
+        # 库型: key 是系统名
+        sys_names = args.bounties.replace("--systems", "").strip()
+        bids = [s for s in sys_names.split(",") if s]
+        label = "library"
+    else:
+        bids = [f"bounty_{b}" for b in args.bounties.split(",")]
+        label = "detect"
 
     # 汇总: mode -> bounty -> [results]
     stats = {m: {b: [] for b in bids} for m in modes}
@@ -76,7 +93,7 @@ def main() -> None:
             "accuracy": total_hits / total_runs if total_runs else 0,
         }
 
-    out = os.path.join(REPO, "stats_rerun_detect.json")
+    out = os.path.join(REPO, f"stats_rerun_{label}.json")
     with open(out, "w") as f:
         json.dump(summary, f, ensure_ascii=False, indent=1)
     print(f"\nsaved: {out}")
