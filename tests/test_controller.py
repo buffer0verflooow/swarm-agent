@@ -233,7 +233,7 @@ def test_controller_noop(db):
     print("\n── test: noop when all workers normal ──")
 
     run2 = "run-noop-test"
-    db.execute("INSERT INTO swarm_runs (run_id, token_budget, tokens_spent, budget_strategy) VALUES (?, 100000, 30000, 'balanced')", (run2,))
+    db.execute("INSERT INTO swarm_runs (run_id, swarm_name, intent, target_type, target_id, token_budget, tokens_spent, budget_strategy) VALUES (?, 'noop-test', 'analyze', 'webapp', 'demo.test', 100000, 30000, 'balanced')", (run2,))
     db.conn.commit()
 
     # Only normal workers

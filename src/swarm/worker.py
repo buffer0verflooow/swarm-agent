@@ -341,7 +341,11 @@ class SwarmWorker:
 
 
 def build_task_context(db, task: Dict[str, Any], max_entries: int = 5) -> str:
-    """Build a compact KB context for a claimed market task."""
+    """Build a compact KB context for a claimed market task.
+
+    Includes the graph's shared signal board when the task is
+    graph-affiliated (see :mod:`swarm.signal_board`).
+    """
     focus = _loads_json(task.get("focus_params"), {})
     context_ids = focus.get("context_entry_ids", [])
     if not isinstance(context_ids, list):
@@ -353,6 +357,17 @@ def build_task_context(db, task: Dict[str, Any], max_entries: int = 5) -> str:
         f"Intent: {task.get('task_intent') or ''}",
         f"Reason: {focus.get('reason') or ''}",
     ]
+
+    # Shared signal board: graph-scoped blackboard published by probe nodes,
+    # read by every downstream worker (shared context for narrow-scope work).
+    try:
+        from .signal_board import build_signal_context
+
+        board_ctx = build_signal_context(db, task)
+        if board_ctx:
+            parts.append(board_ctx)
+    except Exception:  # noqa: BLE001 — signal board must never break claiming
+        pass
 
     if run_id:
         try:

@@ -22,6 +22,10 @@ from .run_manager import (
     build_seed_tasks, default_role_counts,
 )
 from .runner import SwarmRunner, RunnerResult, adapt_executor_factory
+from .signal_board import (
+    publish_signal, get_signal, get_signals, attach_evidence,
+    collect_evidence, get_graph_id_for_task, build_signal_context,
+)
 from .client_api import (
     submit_swarm_task, refresh_run_status, get_swarm_status,
     get_swarm_result, wait_for_swarm_result,
@@ -36,6 +40,8 @@ __all__ = [
     "publish_work_task", "publish_tasks_for_knowledge", "poll_work_tasks",
     "claim_work_tasks", "recover_stale_work_claims",
     "complete_work_task", "fail_work_task",
+    "publish_signal", "get_signal", "get_signals", "attach_evidence",
+    "collect_evidence", "get_graph_id_for_task", "build_signal_context",
     "list_model_profiles", "get_model_profile", "upsert_model_profile",
     "assign_task_model_profile", "resolve_task_model_profile",
     "record_swarm_event", "build_run_summary",

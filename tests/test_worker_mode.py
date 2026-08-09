@@ -58,9 +58,11 @@ def test_worker_context_stripped(db):
     from src.swarm.orchestrator import SwarmOrchestrator
     orch = SwarmOrchestrator(db)
 
-    # 注入一些探索数据 (stub 表只有 4 列)
+    # 注入一些探索数据
     db.execute(
-        "INSERT INTO explorer_traces VALUES ('t1','run-c','GET','IDOR')"
+        """INSERT INTO exploration_traces
+           (trace_id, run_id, target_url, method, vulnerability_class, result)
+           VALUES ('t1', 'run-c', 'http://demo.test/x', 'GET', 'IDOR', 'not_found')"""
     )
     db.conn.commit()
 
@@ -88,7 +90,8 @@ def test_full_context_includes_memory(db):
     # 注入探索记忆 + 知识条目
     eid = str(uuid.uuid4())
     db.execute(
-        "INSERT INTO knowledge_entries (id, title, content, knowledge_type, level) VALUES (?, 'test finding', 'test content', 'vulnerability', 3)",
+        """INSERT INTO knowledge_entries (id, title, content, knowledge_type, level, source_agent)
+           VALUES (?, 'test finding', 'test content', 'vulnerability', 3, 'test-agent')""",
         (eid,),
     )
     db.conn.commit()

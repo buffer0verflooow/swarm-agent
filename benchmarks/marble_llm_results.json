@@ -1,0 +1,1466 @@
+{
+ "0": {
+  "task_id": 0,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "1": {
+  "task_id": 1,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "2": {
+  "task_id": 2,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "3": {
+  "task_id": 3,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "4": {
+  "task_id": 4,
+  "predicted": [
+   "LOCK_CONTENTION"
+  ],
+  "expected": [
+   "LOCK_CONTENTION"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "5": {
+  "task_id": 5,
+  "predicted": [
+   "VACUUM"
+  ],
+  "expected": [
+   "VACUUM"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "6": {
+  "task_id": 6,
+  "predicted": [
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "7": {
+  "task_id": 7,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "8": {
+  "task_id": 8,
+  "predicted": [
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "9": {
+  "task_id": 9,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "10": {
+  "task_id": 10,
+  "predicted": [
+   "VACUUM"
+  ],
+  "expected": [
+   "VACUUM"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "11": {
+  "task_id": 11,
+  "predicted": [
+   "LOCK_CONTENTION"
+  ],
+  "expected": [
+   "LOCK_CONTENTION"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "12": {
+  "task_id": 12,
+  "predicted": [
+   "LOCK_CONTENTION"
+  ],
+  "expected": [
+   "LOCK_CONTENTION"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "13": {
+  "task_id": 13,
+  "predicted": [
+   "VACUUM"
+  ],
+  "expected": [
+   "VACUUM"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "14": {
+  "task_id": 14,
+  "predicted": [
+   "LOCK_CONTENTION"
+  ],
+  "expected": [
+   "LOCK_CONTENTION"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "15": {
+  "task_id": 15,
+  "predicted": [
+   "LOCK_CONTENTION"
+  ],
+  "expected": [
+   "LOCK_CONTENTION"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "16": {
+  "task_id": 16,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "17": {
+  "task_id": 17,
+  "predicted": [
+   "LOCK_CONTENTION"
+  ],
+  "expected": [
+   "LOCK_CONTENTION"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "18": {
+  "task_id": 18,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "19": {
+  "task_id": 19,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "20": {
+  "task_id": 20,
+  "predicted": [
+   "VACUUM"
+  ],
+  "expected": [
+   "VACUUM"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "21": {
+  "task_id": 21,
+  "predicted": [
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "22": {
+  "task_id": 22,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "23": {
+  "task_id": 23,
+  "predicted": [
+   "VACUUM"
+  ],
+  "expected": [
+   "VACUUM"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "24": {
+  "task_id": 24,
+  "predicted": [
+   "VACUUM"
+  ],
+  "expected": [
+   "VACUUM"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "25": {
+  "task_id": 25,
+  "predicted": [
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "26": {
+  "task_id": 26,
+  "predicted": [
+   "LOCK_CONTENTION"
+  ],
+  "expected": [
+   "LOCK_CONTENTION"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "27": {
+  "task_id": 27,
+  "predicted": [
+   "LOCK_CONTENTION"
+  ],
+  "expected": [
+   "LOCK_CONTENTION"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "28": {
+  "task_id": 28,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "29": {
+  "task_id": 29,
+  "predicted": [
+   "LOCK_CONTENTION"
+  ],
+  "expected": [
+   "LOCK_CONTENTION"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "30": {
+  "task_id": 30,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "31": {
+  "task_id": 31,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "32": {
+  "task_id": 32,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "33": {
+  "task_id": 33,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "34": {
+  "task_id": 34,
+  "predicted": [
+   "VACUUM"
+  ],
+  "expected": [
+   "VACUUM"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "35": {
+  "task_id": 35,
+  "predicted": [
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "36": {
+  "task_id": 36,
+  "predicted": [
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "37": {
+  "task_id": 37,
+  "predicted": [
+   "VACUUM"
+  ],
+  "expected": [
+   "VACUUM"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "38": {
+  "task_id": 38,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "39": {
+  "task_id": 39,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "40": {
+  "task_id": 40,
+  "predicted": [
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "41": {
+  "task_id": 41,
+  "predicted": [
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "42": {
+  "task_id": 42,
+  "predicted": [
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "43": {
+  "task_id": 43,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "44": {
+  "task_id": 44,
+  "predicted": [
+   "VACUUM"
+  ],
+  "expected": [
+   "VACUUM"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "45": {
+  "task_id": 45,
+  "predicted": [
+   "VACUUM"
+  ],
+  "expected": [
+   "VACUUM"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "46": {
+  "task_id": 46,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "47": {
+  "task_id": 47,
+  "predicted": [
+   "LOCK_CONTENTION"
+  ],
+  "expected": [
+   "LOCK_CONTENTION"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "48": {
+  "task_id": 48,
+  "predicted": [
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "49": {
+  "task_id": 49,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "50": {
+  "task_id": 50,
+  "predicted": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "51": {
+  "task_id": 51,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "LOCK_CONTENTION",
+   "REDUNDANT_INDEX"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "52": {
+  "task_id": 52,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "LOCK_CONTENTION",
+   "REDUNDANT_INDEX"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "53": {
+  "task_id": 53,
+  "predicted": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "54": {
+  "task_id": 54,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "LOCK_CONTENTION",
+   "REDUNDANT_INDEX"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "55": {
+  "task_id": 55,
+  "predicted": [
+   "LOCK_CONTENTION"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": false,
+  "precision": 0.0,
+  "recall": 0.0,
+  "f1": 0.0,
+  "mode": "llm"
+ },
+ "56": {
+  "task_id": 56,
+  "predicted": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "57": {
+  "task_id": 57,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "58": {
+  "task_id": 58,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "LOCK_CONTENTION"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "59": {
+  "task_id": 59,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "LOCK_CONTENTION",
+   "REDUNDANT_INDEX"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "60": {
+  "task_id": 60,
+  "predicted": [],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": false,
+  "precision": 0.0,
+  "recall": 0.0,
+  "f1": 0.0,
+  "mode": "llm"
+ },
+ "61": {
+  "task_id": 61,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "LOCK_CONTENTION"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "62": {
+  "task_id": 62,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "LOCK_CONTENTION"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "63": {
+  "task_id": 63,
+  "predicted": [
+   "VACUUM"
+  ],
+  "expected": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "64": {
+  "task_id": 64,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "LOCK_CONTENTION",
+   "REDUNDANT_INDEX"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "65": {
+  "task_id": 65,
+  "predicted": [
+   "LOCK_CONTENTION"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "LOCK_CONTENTION"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "66": {
+  "task_id": 66,
+  "predicted": [
+   "VACUUM",
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "67": {
+  "task_id": 67,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "LOCK_CONTENTION"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "68": {
+  "task_id": 68,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "LOCK_CONTENTION",
+   "REDUNDANT_INDEX"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "69": {
+  "task_id": 69,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "70": {
+  "task_id": 70,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "LOCK_CONTENTION"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "71": {
+  "task_id": 71,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "LOCK_CONTENTION",
+   "REDUNDANT_INDEX"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "72": {
+  "task_id": 72,
+  "predicted": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "73": {
+  "task_id": 73,
+  "predicted": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "74": {
+  "task_id": 74,
+  "predicted": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "75": {
+  "task_id": 75,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "LOCK_CONTENTION",
+   "REDUNDANT_INDEX"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "76": {
+  "task_id": 76,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "LOCK_CONTENTION"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "77": {
+  "task_id": 77,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "LOCK_CONTENTION",
+   "REDUNDANT_INDEX"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "78": {
+  "task_id": 78,
+  "predicted": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "79": {
+  "task_id": 79,
+  "predicted": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "80": {
+  "task_id": 80,
+  "predicted": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "81": {
+  "task_id": 81,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "82": {
+  "task_id": 82,
+  "predicted": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "83": {
+  "task_id": 83,
+  "predicted": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "84": {
+  "task_id": 84,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "LOCK_CONTENTION"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "85": {
+  "task_id": 85,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "LOCK_CONTENTION"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "86": {
+  "task_id": 86,
+  "predicted": [],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": false,
+  "precision": 0.0,
+  "recall": 0.0,
+  "f1": 0.0,
+  "mode": "llm"
+ },
+ "87": {
+  "task_id": 87,
+  "predicted": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "88": {
+  "task_id": 88,
+  "predicted": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "89": {
+  "task_id": 89,
+  "predicted": [
+   "INSERT_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "LOCK_CONTENTION"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "90": {
+  "task_id": 90,
+  "predicted": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "91": {
+  "task_id": 91,
+  "predicted": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "92": {
+  "task_id": 92,
+  "predicted": [],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": false,
+  "precision": 0.0,
+  "recall": 0.0,
+  "f1": 0.0,
+  "mode": "llm"
+ },
+ "93": {
+  "task_id": 93,
+  "predicted": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "94": {
+  "task_id": 94,
+  "predicted": [
+   "FETCH_LARGE_DATA",
+   "VACUUM"
+  ],
+  "expected": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "95": {
+  "task_id": 95,
+  "predicted": [
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "LOCK_CONTENTION",
+   "REDUNDANT_INDEX"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "96": {
+  "task_id": 96,
+  "predicted": [
+   "VACUUM"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "97": {
+  "task_id": 97,
+  "predicted": [
+   "VACUUM"
+  ],
+  "expected": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": false,
+  "precision": 1.0,
+  "recall": 0.5,
+  "f1": 0.667,
+  "mode": "llm"
+ },
+ "98": {
+  "task_id": 98,
+  "predicted": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ },
+ "99": {
+  "task_id": 99,
+  "predicted": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "mode": "llm"
+ }
+}

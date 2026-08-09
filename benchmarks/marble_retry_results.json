@@ -1,0 +1,202 @@
+{
+ "40": {
+  "predicted": [
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "42": {
+  "predicted": [
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "55": {
+  "predicted": [
+   "VACUUM",
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "57": {
+  "predicted": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "60": {
+  "predicted": [
+   "VACUUM",
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "62": {
+  "predicted": [
+   "INSERT_LARGE_DATA",
+   "LOCK_CONTENTION"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "LOCK_CONTENTION"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "63": {
+  "predicted": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "66": {
+  "predicted": [
+   "VACUUM",
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "69": {
+  "predicted": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "INSERT_LARGE_DATA",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "79": {
+  "predicted": [
+   "VACUUM",
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "86": {
+  "predicted": [
+   "VACUUM",
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "87": {
+  "predicted": [
+   "VACUUM",
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "90": {
+  "predicted": [
+   "VACUUM",
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "91": {
+  "predicted": [
+   "VACUUM",
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "92": {
+  "predicted": [
+   "VACUUM",
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "96": {
+  "predicted": [
+   "VACUUM",
+   "REDUNDANT_INDEX"
+  ],
+  "expected": [
+   "REDUNDANT_INDEX",
+   "VACUUM"
+  ],
+  "exact": true,
+  "f1": 1.0
+ },
+ "97": {
+  "predicted": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "expected": [
+   "VACUUM",
+   "FETCH_LARGE_DATA"
+  ],
+  "exact": true,
+  "f1": 1.0
+ }
+}
