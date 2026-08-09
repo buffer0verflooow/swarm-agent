@@ -182,7 +182,7 @@ Claude、Hermes、Codex 或自定义执行器都只是蜂群的上游调用端�
 
 ```bash
 # Hermes/Claude/Codex 下发一个高层任务
-python3 swarmctl.py task submit \
+python3 scripts/swarmctl.py task submit \
   --source hermes \
   --task "对 example.test 做授权范围内的侦察和漏洞初筛，并输出可复现证据" \
   --intent recon \
@@ -191,23 +191,23 @@ python3 swarmctl.py task submit \
   --json
 
 # 查询任务状态
-python3 swarmctl.py task status --run-id "$RUN_ID" --json
+python3 scripts/swarmctl.py task status --run-id "$RUN_ID" --json
 
 # 获取蜂群结果；未完成时返回当前摘要，完成后返回最终 result/summary
-python3 swarmctl.py task result --run-id "$RUN_ID" --json
+python3 scripts/swarmctl.py task result --run-id "$RUN_ID" --json
 
 # 可选：等待完成
-python3 swarmctl.py task wait --run-id "$RUN_ID" --timeout 300 --json
+python3 scripts/swarmctl.py task wait --run-id "$RUN_ID" --timeout 300 --json
 
 # 管理蜂群默认模型画像；这里把 analyst 默认配置为 claude/sonnet
-python3 swarmctl.py models set \
+python3 scripts/swarmctl.py models set \
   --role analyst \
   --provider claude \
   --model sonnet \
   --default
 ```
 
-`agent_worker.py --claim-only/--complete-task-id` 是蜂群内部 worker 入口，不是 Hermes/Claude/Codex 的主调用入口。外部工具只需要 `swarmctl.py task submit/status/result/wait`。
+`scripts/agent_worker.py --claim-only/--complete-task-id` 是蜂群内部 worker 入口，不是 Hermes/Claude/Codex 的主调用入口。外部工具只需要 `scripts/swarmctl.py task submit/status/result/wait`。
 
 如果没有配置具体 provider，默认 profile 使用 `provider=client`，表示蜂群只指定能力档位（例如 `scanner/fast`、`analyst/reasoning`）。真实执行器可以在蜂群内部把这些 profile 映射到 Claude、Codex 或本地模型。
 
@@ -239,7 +239,7 @@ python3 swarmctl.py models set \
 src/
 ├── db.py              # SQLite 封装
 ├── agents/
-│   ├── capture.py     # ★ 统一捕获 (新)
+│   ├── scripts/      # CLI 入口 (capture/swarmctl/init_db/...)
 │   └── extractor.py   #   文章提取 (保留, 作为 capture 的一个特例)
 ├── swarm/
 │   ├── run_manager.py #   创建 run + 发布并行 seed tasks
@@ -253,13 +253,13 @@ src/
     └── inference.py   #   本体发现 + 推理
 
 工作流:
-  swarmctl.py task submit/status/result
+  scripts/swarmctl.py task submit/status/result
      → 外部工具下发任务、查询状态、获取结果
 
-  start_swarm.py / swarmctl.py models
+  scripts/start_swarm.py / scripts/swarmctl.py models
      → 创建 run、维护模型 profile、记录事件、生成 summary
 
-  agent_worker.py / SwarmWorker
+  scripts/agent_worker.py / SwarmWorker
      → 蜂群内部 worker 入口
      → claim_work_tasks()
      → resolve_task_model_profile()
@@ -273,11 +273,11 @@ src/
 
 ## 五、下一步
 
-1. ✅ `capture.py` 已写
+1. ✅ `scripts/capture.py` 已写
 2. ✅ `work_queue.py` 已把 `agent_tasks` 变成共享任务市场
-3. ✅ `worker.py` / `agent_worker.py` 已支持 claim → execute/manual complete
-4. ✅ `run_manager.py` / `start_swarm.py` 已支持市场化 run 初始化
-5. ✅ `model_config.py` / `swarmctl.py` 已支持蜂群自维护模型 profile 和 run summary
+3. ✅ `worker.py` / `scripts/agent_worker.py` 已支持 claim → execute/manual complete
+4. ✅ `run_manager.py` / `scripts/start_swarm.py` 已支持市场化 run 初始化
+5. ✅ `model_config.py` / `scripts/swarmctl.py` 已支持蜂群自维护模型 profile 和 run summary
 6. 🔲 在外部 swarm-hunt/Claude/Hermes/Codex 执行器中接入 worker loop
 7. 🔲 在客户端中集成 `on_user_correction` 钩子
 8. 🔲 实现 `nightly_knowledge_harvest` cron job

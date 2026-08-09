@@ -515,7 +515,7 @@ def test_start_swarm_cli_outputs_seeded_run():
     result = subprocess.run(
         [
             sys.executable,
-            os.path.join(repo, "start_swarm.py"),
+            os.path.join(repo, "scripts", "start_swarm.py"),
             "--db", db_path,
             "--name", "cli-swarm",
             "--intent", "recon",
@@ -624,7 +624,7 @@ def test_swarmctl_cli_task_submit_status_result():
     submit = subprocess.run(
         [
             sys.executable,
-            os.path.join(repo, "swarmctl.py"),
+            os.path.join(repo, "scripts", "swarmctl.py"),
             "--db", db_path,
             "task", "submit",
             "--source", "claude",
@@ -647,7 +647,7 @@ def test_swarmctl_cli_task_submit_status_result():
     status = subprocess.run(
         [
             sys.executable,
-            os.path.join(repo, "swarmctl.py"),
+            os.path.join(repo, "scripts", "swarmctl.py"),
             "--db", db_path,
             "task", "status",
             "--run-id", run_id,
@@ -682,7 +682,7 @@ def test_swarmctl_cli_task_submit_status_result():
     result = subprocess.run(
         [
             sys.executable,
-            os.path.join(repo, "swarmctl.py"),
+            os.path.join(repo, "scripts", "swarmctl.py"),
             "--db", db_path,
             "task", "result",
             "--run-id", run_id,
@@ -718,7 +718,7 @@ def test_swarmctl_cli_models_event_summary():
     set_result = subprocess.run(
         [
             sys.executable,
-            os.path.join(repo, "swarmctl.py"),
+            os.path.join(repo, "scripts", "swarmctl.py"),
             "--db", db_path,
             "models", "set",
             "--role", "scanner",
@@ -741,7 +741,7 @@ def test_swarmctl_cli_models_event_summary():
     list_result = subprocess.run(
         [
             sys.executable,
-            os.path.join(repo, "swarmctl.py"),
+            os.path.join(repo, "scripts", "swarmctl.py"),
             "--db", db_path,
             "models", "list",
             "--role", "scanner",
@@ -759,7 +759,7 @@ def test_swarmctl_cli_models_event_summary():
     event_result = subprocess.run(
         [
             sys.executable,
-            os.path.join(repo, "swarmctl.py"),
+            os.path.join(repo, "scripts", "swarmctl.py"),
             "--db", db_path,
             "event",
             "--run-id", run_id,
@@ -782,7 +782,7 @@ def test_swarmctl_cli_models_event_summary():
     summary_result = subprocess.run(
         [
             sys.executable,
-            os.path.join(repo, "swarmctl.py"),
+            os.path.join(repo, "scripts", "swarmctl.py"),
             "--db", db_path,
             "summary",
             "--run-id", run_id,
@@ -937,7 +937,7 @@ def test_agent_worker_cli_manual_claim_complete():
     claim = subprocess.run(
         [
             sys.executable,
-            os.path.join(repo, "agent_worker.py"),
+            os.path.join(repo, "scripts", "agent_worker.py"),
             "--db", db_path,
             "--run-id", run_id,
             "--agent", "reporter-cli-001",
@@ -958,7 +958,7 @@ def test_agent_worker_cli_manual_claim_complete():
     complete = subprocess.run(
         [
             sys.executable,
-            os.path.join(repo, "agent_worker.py"),
+            os.path.join(repo, "scripts", "agent_worker.py"),
             "--db", db_path,
             "--run-id", run_id,
             "--agent", "reporter-cli-001",
@@ -1131,7 +1131,7 @@ def test_capture_cli_merges_tags_before_store():
     result = subprocess.run(
         [
             sys.executable,
-            os.path.join(repo, "capture.py"),
+            os.path.join(repo, "scripts", "capture.py"),
             "--db", db_path,
             "--content", content,
             "--agent", "cli-agent",
@@ -1172,7 +1172,7 @@ def test_capture_cli_merges_tags_before_store():
     fresh_result = subprocess.run(
         [
             sys.executable,
-            os.path.join(repo, "capture.py"),
+            os.path.join(repo, "scripts", "capture.py"),
             "--db", fresh_db_path,
             "--content", content,
             "--agent", "fresh-cli-agent",

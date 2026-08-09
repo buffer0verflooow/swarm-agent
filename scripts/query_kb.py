@@ -1,6 +1,8 @@
+import sys
+from pathlib import Path
 #!/usr/bin/env python3
 import sys
-sys.path.insert(0, '/home/pwn/workspace/research/swarm-knowledge')
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src import SwarmDB, search
 db = SwarmDB('/home/pwn/workspace/research/swarm-knowledge/swarm_knowledge.db')
 for q in ['auth', 'login', 'SSO', 'OAuth', 'token', 'bancoplata', 'prime', 'fr']:

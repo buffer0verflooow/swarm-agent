@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
-REPO = Path(__file__).resolve().parent
+REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from src import SwarmDB

@@ -10,10 +10,10 @@
 pip install -r requirements.txt
 
 # 2. 初始化 SQLite 单文件数据库
-python init_db.py
+python scripts/init_db.py
 
 # 3. 查看统计
-python init_db.py --stats
+python scripts/init_db.py --stats
 
 # 4. 运行集成测试
 python tests/test_swarm_loop.py
@@ -220,9 +220,9 @@ Phase 4: 跨蜂群知识共享
 
 ```
 swarm-knowledge/
-├── agent_worker.py                  # Agent 侧任务市场 CLI
-├── start_swarm.py                   # 创建 run 并发布市场 seed tasks
-├── swarmctl.py                      # 模型 profile、对话事件、run summary 控制面
+├── scripts/                         # CLI 入口 (swarmctl/agent_worker/init_db/...)
+│   ├── start_swarm.py                   # 创建 run 并发布市场 seed tasks
+│   ├── swarmctl.py                      # 模型 profile、对话事件、run summary 控制面
 ├── migrations/
 │   ├── 001_schema.sql              # SQLite 核心表 + 种子本体
 │   ├── 002_swarm_extensions.sql    # spawn_requests + heartbeats

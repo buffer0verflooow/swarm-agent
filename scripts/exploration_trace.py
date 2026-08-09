@@ -31,7 +31,7 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src import SwarmDB, record_trace
 
@@ -54,7 +54,7 @@ def main():
 
     args = ap.parse_args()
 
-    db_path = args.db or str(Path(__file__).resolve().parent / "swarm_knowledge.db")
+    db_path = args.db or str(Path(__file__).resolve().parent.parent / "swarm_knowledge.db")
     db = SwarmDB(db_path)
 
     trace_id = record_trace(
