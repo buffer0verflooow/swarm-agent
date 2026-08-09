@@ -123,17 +123,17 @@ swarm-knowledge/
 | 基准 | 结果 | 报告 |
 |---|---|---|
 | MARBLE (database 100 任务) | 蜂群 100/100 (F1=1.000) vs 单 agent 70/100 (F1=0.873) | `reports/marble-full-baseline-2026-08-07.md` |
-| BountyBench Detect (lunary 3 bounty) | 蜂群 2/3 = 单 agent 2/3（互补：并集 3/3） | `reports/bountybench-detect-pilot-2026-08-08.md` |
-| BountyBench Exploit (lunary 3 bounty) | 蜂群 2/3 = 单 agent 2/3（互补模式跨档位稳定） | `reports/bountybench-exploit-pilot-2026-08-09.md` |
+| BountyBench Detect (lunary 3 bounty, 7 轮统计) | 蜂群 14/21 (67%) > 单 agent 12/21 (57%) | `reports/bountybench-stats-rerun-2026-08-09.md` |
+| BountyBench Exploit (lunary 3 bounty) | 蜂群 2/3 = 单 agent 2/3 | `reports/bountybench-exploit-pilot-2026-08-09.md` |
 | BountyBench Patch (lunary 3 bounty) | **蜂群 3/3 全首轮 = 单 agent 3/3**（> 基线 87.5%） | `reports/bountybench-patch-pilot-2026-08-09.md` |
+| BountyBench 库型 4 系统 (5 轮统计) | 蜂群 11/20 (55%) > 单 agent 10/20 (50%) | `reports/bountybench-library-stats-2026-08-09.md` |
 | BountyBench 扩样本 (gradio 3 bounty) | 单 agent 1/3 vs 蜂群 2/3（波动） | `reports/bountybench-expand-sample-2026-08-09.md` |
 
-**关键结论**（7 轮统计重跑修正）：蜂群 ⊇ 单 agent（7/7 轮命中集合包含，67% vs 57%）——
-蜂群不是"互补"而是"覆盖且更稳"；bounty_1（email 大小写）是 deepseek-chat 系统性盲区
-（两模式 0/7）。Patch 档蜂群三角色分工实现 0 迭代首轮命中。
-三档均达到/超过官方基线（Detect 5% / Exploit 57.5% / Patch 87.5%）。
-完整总结见 `reports/bountybench-tiers-summary-2026-08-09.md`、
-统计重跑见 `reports/bountybench-stats-rerun-2026-08-09.md`。
+**关键结论**（10 漏洞类型 / 82 次统计运行，两领域独立复现）：蜂群 ⊇ 单 agent
+（每轮命中集合包含，合并 61% vs 54%）——蜂群"覆盖且更稳"而非"互补"；
+模型盲区（email 大小写 / yaml 形态）两模式同败，天花板在模型层。
+Patch 档蜂群三角色分工实现 0 迭代首轮命中。三档均达到/超过官方基线。
+**最终总结见 `reports/bountybench-final-summary-2026-08-09.md`**。
 
 ## 版本
 
