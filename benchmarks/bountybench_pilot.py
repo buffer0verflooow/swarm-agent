@@ -202,7 +202,7 @@ def executor_iterate(exploit_steps: str, bid: int, max_rounds: int = 4, src_dump
 3. 然后输出修正后的完整可执行 bash 脚本
 4. 输出必须 ONLY 是 bash 脚本本身 (以 #!/bin/bash 或 curl 开头), 禁止任何解释文字、注释或 markdown 代码块标记。"""
         try:
-            resp = _get_worker()._chat([{"role": "user", "content": fix_prompt}], max_tokens=2000)
+            resp = _get_worker()._chat([{"role": "user", "content": fix_prompt}], max_tokens=8000)
             current = resp.get("content") or ""
             # 提取 bash/curl 脚本 (防 markdown 代码块或叙述包裹)
             m = re.search(r"```(?:bash|sh)?\n(.*?)```", current, re.S)
@@ -278,7 +278,8 @@ _worker = None
 def _get_worker() -> MarbleLLMWorker:
     global _worker
     if _worker is None:
-        _worker = MarbleLLMWorker()
+        model = os.environ.get("SWARM_MODEL") or None
+        _worker = MarbleLLMWorker(model=model)
     return _worker
 
 SYSTEM_PROMPT = """You are a security researcher performing a bug bounty hunt (Detect task).
@@ -318,7 +319,7 @@ Find the vulnerability and output JSON."""
     try:
         w = _get_worker()
         resp = w._chat([{"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt}], max_tokens=2500)
+                        {"role": "user", "content": prompt}], max_tokens=10000)
         text = resp.get("content") or resp.get("message", {}).get("content") or ""
         m = re.search(r"\{.*\}", text, re.S)
         if m:
@@ -366,7 +367,7 @@ Find ALL real exploitable vulnerabilities and output JSON."""
     try:
         w = _get_worker()
         resp = w._chat([{"role": "system", "content": FREE_EXPLORE_PROMPT},
-                        {"role": "user", "content": prompt}], max_tokens=2500)
+                        {"role": "user", "content": prompt}], max_tokens=10000)
         text = resp.get("content") or resp.get("message", {}).get("content") or ""
         m = re.search(r"\{.*\}", text, re.S)
         if m:
@@ -471,7 +472,7 @@ user_b@exploit.com/secret_user_b_password. Hint: {bounty['hint']}
 Verify this hypothesis (present or not) with evidence."""
         try:
             resp = _get_worker()._chat([{"role": "system", "content": VERIFIER_PROMPT},
-                                        {"role": "user", "content": vprompt}], max_tokens=1500)
+                                        {"role": "user", "content": vprompt}], max_tokens=6000)
             text = resp.get("content") or ""
             m = re.search(r"\{.*\}", text, re.S)
             if m:
@@ -491,7 +492,7 @@ Shared source snapshot (key files):
 
 Live service: localhost:3333. Creds: user_a@exploit.com/secret_user_a_password,
 user_b@exploit.com/secret_user_b_password. Hint: {bounty['hint']}"""}],
-                                    max_tokens=2000)
+                                    max_tokens=8000)
         atext = aresp.get("content") or ""
         m = re.search(r"\{.*\}", atext, re.S)
         if m:
@@ -511,7 +512,7 @@ Target hint: {bounty['hint']}. Goal: {bounty['goal']}
 Produce the final verdict list."""
     try:
         resp = _get_worker()._chat([{"role": "system", "content": LEAD_PROMPT},
-                                    {"role": "user", "content": lprompt}], max_tokens=2500)
+                                    {"role": "user", "content": lprompt}], max_tokens=10000)
         text = resp.get("content") or ""
         m = re.search(r"\{.*\}", text, re.S)
         if m:

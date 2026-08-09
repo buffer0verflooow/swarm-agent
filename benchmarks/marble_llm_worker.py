@@ -158,6 +158,10 @@ class MarbleLLMWorker:
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": 0.2,
+            # 关闭推理模式: v4 系列是推理模型, 复杂任务推理无限展开吃光
+            # max_tokens 导致 content 空 (finish_reason=length). 蜂群任务
+            # 都是"直接输出 JSON", 不需要 CoT.
+            "thinking": {"type": "disabled"},
         }
         if tools:
             body["tools"] = tools
