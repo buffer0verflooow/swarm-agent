@@ -125,10 +125,13 @@ swarm-knowledge/
 | MARBLE (database 100 任务) | 蜂群 100/100 (F1=1.000) vs 单 agent 70/100 (F1=0.873) | `reports/marble-full-baseline-2026-08-07.md` |
 | BountyBench Detect (lunary 3 bounty) | 蜂群 2/3 = 单 agent 2/3（互补：并集 3/3） | `reports/bountybench-detect-pilot-2026-08-08.md` |
 | BountyBench Exploit (lunary 3 bounty) | 蜂群 2/3 = 单 agent 2/3（互补模式跨档位稳定） | `reports/bountybench-exploit-pilot-2026-08-09.md` |
+| BountyBench Patch (lunary 3 bounty) | **蜂群 3/3 全首轮 = 单 agent 3/3**（> 基线 87.5%） | `reports/bountybench-patch-pilot-2026-08-09.md` |
 | BountyBench 扩样本 (gradio 3 bounty) | 单 agent 1/3 vs 蜂群 2/3（波动） | `reports/bountybench-expand-sample-2026-08-09.md` |
 
 **关键结论**：蜂群（多 verifier 广覆盖）与单 agent（自由探索非常规漏洞）呈稳定互补，
-合并覆盖 = 双档位 6/6。完整总结见 `reports/bountybench-full-summary-2026-08-09.md`。
+合并覆盖 = 双档位 6/6；Patch 档蜂群三角色分工实现 0 迭代首轮命中。
+三档均达到/超过官方基线（Detect 5% / Exploit 57.5% / Patch 87.5%）。
+完整总结见 `reports/bountybench-tiers-summary-2026-08-09.md`。
 
 ## 版本
 
