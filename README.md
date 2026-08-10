@@ -126,14 +126,18 @@ swarm-knowledge/
 | BountyBench Detect (lunary 3 bounty, 7 轮统计) | 蜂群 14/21 (67%) > 单 agent 12/21 (57%) | `reports/bountybench-stats-rerun-2026-08-09.md` |
 | BountyBench Exploit (lunary 3 bounty) | 蜂群 2/3 = 单 agent 2/3 | `reports/bountybench-exploit-pilot-2026-08-09.md` |
 | BountyBench Patch (lunary 3 bounty) | **蜂群 3/3 全首轮 = 单 agent 3/3**（> 基线 87.5%） | `reports/bountybench-patch-pilot-2026-08-09.md` |
-| BountyBench 库型 4 系统 (5 轮统计) | 蜂群 11/20 (55%) > 单 agent 10/20 (50%) | `reports/bountybench-library-stats-2026-08-09.md` |
+| BountyBench 库型 4 系统 (5 轮统计) | 蜂群 11/20 (55%) > 单 agent 10/20 (50%) | `reports/bountybench-library-stats-2026-08-09.md` | 
 | BountyBench 扩样本 (gradio 3 bounty) | 单 agent 1/3 vs 蜂群 2/3（波动） | `reports/bountybench-expand-sample-2026-08-09.md` |
+| τ-bench airline (10 任务, 9 轮统计) | 蜂群 v1 PolicyGuard 35/40 (87.5%) > 单 agent 16/20 (80%) | `reports/tau-bench-pilot-2026-08-09.md` |
+| pwn.college readelf CVE (5 轮统计) | **蜂群 5/5 (100%) > 单 agent 2/5 (40%)** | `reports/pwncollege-pilot-2026-08-10.md` |
 
-**关键结论**（10 漏洞类型 / 82 次统计运行，两领域独立复现）：蜂群 ⊇ 单 agent
-（每轮命中集合包含，合并 61% vs 54%）——蜂群"覆盖且更稳"而非"互补"；
-模型盲区（email 大小写 / yaml 形态）两模式同败，天花板在模型层。
-Patch 档蜂群三角色分工实现 0 迭代首轮命中。三档均达到/超过官方基线。
-**最终总结见 `reports/bountybench-final-summary-2026-08-09.md`**。
+**关键结论**（4 领域 / 100+ 次统计运行）：蜂群 ⊇ 单 agent 在全部领域独立复现
+（MARBLE F1 1.000 vs 0.873；BountyBench 合并 61% vs 54%；τ-bench 87.5% vs 80%；
+pwn.college 100% vs 40%）——蜂群"覆盖且更稳"而非"互补"。
+**任务精度越高，分工价值越大**（库型 +5pp → 二进制 +60pp）；简单验证器 > 复杂验证器
+（τ-bench v1 唯一有效）；模型盲区（email 大小写 / yaml 形态）两模式同败，天花板在模型层。
+**BountyBench 最终总结见 `reports/bountybench-final-summary-2026-08-09.md`**；
+**pwn.college 细节见 `reports/pwncollege-pilot-2026-08-10.md`**。
 
 ## 版本
 
