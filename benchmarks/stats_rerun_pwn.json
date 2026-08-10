@@ -1,0 +1,66 @@
+{
+ "single": [
+  {
+   "run": 1,
+   "ok": false,
+   "detail": "[第4轮结果] exploit 失败: 构建脚本失败 rc=1: . 请修正构造方法重试。",
+   "secs": 16.3
+  },
+  {
+   "run": 2,
+   "ok": true,
+   "detail": "崩溃! signal=11 rc=-11",
+   "secs": 32.9
+  },
+  {
+   "run": 3,
+   "ok": false,
+   "detail": "[第4轮结果] exploit 失败: 构建脚本失败 rc=127: /home/pwn/workspace/research/pwncollege-build/agent_build.py: 行 1: .symver: 未找到命令\n/home/pwn/workspace/research/pwncollege-build/agent_build.py: 行 1: Looking: 未找到命令\n/",
+   "secs": 84.3
+  },
+  {
+   "run": 4,
+   "ok": true,
+   "detail": "崩溃! signal=11 rc=-11",
+   "secs": 53.3
+  },
+  {
+   "run": 5,
+   "ok": false,
+   "detail": "[第4轮结果] exploit 失败: 未崩溃 rc=0 | file: /home/pwn/workspace/research/pwncollege-build/agent_exploit.elf: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[s | readelf输出:",
+   "secs": 50.9
+  }
+ ],
+ "swarm": [
+  {
+   "run": 1,
+   "ok": true,
+   "detail": "崩溃! signal=11 rc=-11",
+   "secs": 19.8
+  },
+  {
+   "run": 2,
+   "ok": true,
+   "detail": "崩溃! signal=11 rc=-11",
+   "secs": 6.7
+  },
+  {
+   "run": 3,
+   "ok": true,
+   "detail": "崩溃! signal=11 rc=-11",
+   "secs": 6.5
+  },
+  {
+   "run": 4,
+   "ok": true,
+   "detail": "崩溃! signal=11 rc=-11",
+   "secs": 9.4
+  },
+  {
+   "run": 5,
+   "ok": true,
+   "detail": "崩溃! signal=11 rc=-11",
+   "secs": 7.3
+  }
+ ]
+}

@@ -1,0 +1,25 @@
+{
+ "exploited": true,
+ "detail": "崩溃! signal=11 rc=-11",
+ "round": 3,
+ "rounds": [
+  {
+   "round": 1,
+   "ok": false,
+   "detail": "构建脚本失败 rc=1: gcc failed: /usr/bin/x86_64-linux-gnu-ld.bfd: /tmp/tmp4mrv8ilh/exploit.so: version node not found for symbol my_func@VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV",
+   "script_len": 1184
+  },
+  {
+   "round": 2,
+   "ok": false,
+   "detail": "未崩溃 rc=1 | file: /home/pwn/workspace/research/pwncollege-build/agent_exploit.elf: data | readelf输出: readelf：错误： 不是 ELF 文件 - 它开头的 magic 字节错误",
+   "script_len": 3371
+  },
+  {
+   "round": 3,
+   "ok": true,
+   "detail": "崩溃! signal=11 rc=-11",
+   "script_len": 1170
+  }
+ ]
+}
