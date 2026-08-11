@@ -13,12 +13,19 @@
 4. confirmed → boost_pheromone + 更新 trust_vector
 5. refuted → 降 trust + 记录 counter_example
 
+正确性约定 (2026-08-11 hypothesis-validation-pipeline 报告 G1/G2/G3 修复):
+- G3: inconclusive verdict 必须写回队列状态 'inconclusive', 禁止记 'verified'
+- G2: HIGH (level>=3) 条目的 confirmed 必须由 replay_verifier 真实外部复现,
+      库内 lineage/文本特征仅作线索不作证据; 无复现能力时最高判 inconclusive
+- G1: confirmed 后自动执行机器可判门 (in_scope/deduplicated), 其余门 blocked
+      等人工/独立 agent 补证据, 推进 hypothesis 不再永远卡在 'hypothesis'
+
 用法 (Orchestrator 集成):
     from src.governance.verification import auto_enqueue_validations, process_validation_queue
-    
-    # 在 _tick_governance 中调用:
+
+    # 在 _tick_governance 中调用 (可注入外部复现验证器):
     auto_enqueue_validations(db)
-    processed = process_validation_queue(db)
+    processed = process_validation_queue(db, replay_verifier=my_replay_fn)
 """
 
 from __future__ import annotations
@@ -26,10 +33,14 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from .bounty import create_finding_hypothesis
+from .bounty import (
+    auto_apply_machine_gates,
+    create_finding_hypothesis,
+)
 from .engine import boost_pheromone, compute_trust_score
 
 _log = logging.getLogger("swarm_knowledge.verification")
@@ -39,6 +50,10 @@ VULN_TRUST_THRESHOLD = 0.65       # vulnerability 类型 knowledge 的 trust 需
 VERIFICATION_BOOST = 0.25         # 验证 confirmed 时 pheromone boost
 REFUTE_PENALTY = 0.20             # 验证 refuted 时 trust 下降
 MAX_QUEUE_SIZE = 100               # 验证队列最大长度
+REPLAY_REQUIRED_LEVEL = 3          # level >= 3 (HIGH) 的条目必须真实外部复现才能 confirmed
+REPLAY_UNVERIFIABLE_HINT = "库内信号仅作线索, 需真实外部复现"
+# replay_verifier 签名: (knowledge_id, content) -> (bool, evidence_str)
+ReplayVerifier = Callable[[str, str], Tuple[bool, str]]
 
 
 def auto_enqueue_validations(db, run_id: str = None) -> Dict[str, Any]:
@@ -63,20 +78,21 @@ def auto_enqueue_validations(db, run_id: str = None) -> Dict[str, Any]:
     candidates = db.fetch_all(
         f"""SELECT ke.id, ke.title, ke.content, ke.knowledge_type,
                    ke.level, ke.trust_vector, ke.source_agent, ke.source_run_id
-           FROM knowledge_entries ke
-           WHERE ke.status = 'active'
-             AND ke.validation_count = 0
-             {run_filter}
-             AND (
-               (ke.knowledge_type = 'vulnerability' AND ke.level >= 1)
-               OR (ke.knowledge_type = 'mechanism' AND ke.level >= 3)
-               OR ke.level >= 3
-             )
-             AND ke.id NOT IN (
-                 SELECT knowledge_id FROM validation_queue
-                 WHERE status IN ('pending', 'assigned', 'validating', 'verified', 'refuted')
-             )
-           ORDER BY ke.level DESC, ke.created_at DESC LIMIT ?""",
+          FROM knowledge_entries ke
+          WHERE ke.status = 'active'
+            AND ke.validation_count = 0
+            {run_filter}
+            AND (
+              (ke.knowledge_type = 'vulnerability' AND ke.level >= 1)
+              OR (ke.knowledge_type = 'mechanism' AND ke.level >= 3)
+              OR ke.level >= 3
+            )
+            AND ke.id NOT IN (
+                SELECT knowledge_id FROM validation_queue
+                WHERE status IN ('pending', 'assigned', 'validating', 'verified',
+                                 'refuted', 'inconclusive', 'timeout')
+            )
+          ORDER BY ke.level DESC, ke.created_at DESC LIMIT ?""",
         tuple(params),
     )
 
@@ -102,9 +118,9 @@ def auto_enqueue_validations(db, run_id: str = None) -> Dict[str, Any]:
 
         db.execute(
             """INSERT INTO validation_queue
-               (validation_id, knowledge_id, run_id, requested_by,
-                priority, evidence_hash, original_content, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')""",
+              (validation_id, knowledge_id, run_id, requested_by,
+               priority, evidence_hash, original_content, status)
+              VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')""",
             (
                 validation_id,
                 entry["id"],
@@ -118,14 +134,22 @@ def auto_enqueue_validations(db, run_id: str = None) -> Dict[str, Any]:
         enqueued += 1
 
         if entry["knowledge_type"] == "vulnerability":
-            created = create_finding_hypothesis(
-                db,
-                entry["id"],
-                created_by="auto-verification",
-                rationale="Auto-created when vulnerability entry entered validation_queue.",
+            # G1 (2026-08-11): 已有 hypothesis 时跳过创建 — create_finding_hypothesis
+            # 的 upsert 分支会用默认值覆盖 scope_status/severity 等人设元数据,
+            # 导致机器可判门 (in_scope) 误判。自动验证只补建缺失的假设。
+            existing_hyp = db.fetch_one(
+                "SELECT hypothesis_id FROM finding_hypotheses WHERE knowledge_id=?",
+                (entry["id"],),
             )
-            if created:
-                hypotheses += 1
+            if not existing_hyp:
+                created = create_finding_hypothesis(
+                    db,
+                    entry["id"],
+                    created_by="auto-verification",
+                    rationale="Auto-created when vulnerability entry entered validation_queue.",
+                )
+                if created:
+                    hypotheses += 1
 
     db.conn.commit()
     _log.info("verification_enqueue: %d enqueued, %d skipped, %d hypotheses",
@@ -133,7 +157,7 @@ def auto_enqueue_validations(db, run_id: str = None) -> Dict[str, Any]:
     return {"enqueued": enqueued, "skipped": skipped, "hypotheses": hypotheses}
 
 
-def process_validation_queue(db) -> Dict[str, Any]:
+def process_validation_queue(db, replay_verifier: Optional[ReplayVerifier] = None) -> Dict[str, Any]:
     """
     处理验证队列中的待验证条目。
 
@@ -143,14 +167,20 @@ def process_validation_queue(db) -> Dict[str, Any]:
     3. 反例检查: 是否有 counter_examples
 
     当有外部验证 agent 时, 此函数只做分配; 验证 agent 回写 verdict。
+
+    Args:
+        replay_verifier: 可选外部复现验证器 (knowledge_id, content) -> (reproduced, evidence)。
+            G2 约定: HIGH (level>=3) 条目没有 replay_verifier 时最高判 inconclusive,
+            库内信号仅作线索, 不再单独构成 confirmed 证据。
     """
     pending = db.fetch_all(
         """SELECT vq.validation_id, vq.knowledge_id, vq.original_content,
-                  vq.evidence_hash, vq.priority, ke.knowledge_type, ke.trust_vector
-           FROM validation_queue vq
-           JOIN knowledge_entries ke ON vq.knowledge_id = ke.id
-           WHERE vq.status = 'pending'
-           ORDER BY vq.priority DESC LIMIT 20"""
+                  vq.evidence_hash, vq.priority, ke.knowledge_type, ke.trust_vector,
+                  ke.level
+          FROM validation_queue vq
+          JOIN knowledge_entries ke ON vq.knowledge_id = ke.id
+          WHERE vq.status = 'pending'
+          ORDER BY vq.priority DESC LIMIT 20"""
     )
 
     if not pending:
@@ -165,18 +195,18 @@ def process_validation_queue(db) -> Dict[str, Any]:
         vid = item["validation_id"]
         kid = item["knowledge_id"]
 
-        # 自动验证: 交叉验证 + 反例检查
-        verdict = _auto_verify(db, kid, item)
+        # 自动验证: 交叉验证 + 反例检查 (G2: 传 replay_verifier, 库内信号仅作线索)
+        verdict = _auto_verify(db, kid, item, replay_verifier=replay_verifier)
 
-        # 写回 verdict
+        # 写回 verdict (G3: inconclusive 必须记 'inconclusive', 禁止记 'verified')
         db.execute(
             """UPDATE validation_queue
-               SET status = ?, verdict = ?, verdict_reason = ?,
-                   validated_at = datetime('now'), updated_at = datetime('now')
-               WHERE validation_id = ?""",
+              SET status = ?, verdict = ?, verdict_reason = ?,
+                  validated_at = datetime('now'), updated_at = datetime('now')
+              WHERE validation_id = ?""",
             (
                 "verified" if verdict["verdict"] == "confirmed" else
-                "refuted" if verdict["verdict"] == "refuted" else "verified",
+                "refuted" if verdict["verdict"] == "refuted" else "inconclusive",
                 verdict["verdict"],
                 verdict["reason"],
                 vid,
@@ -187,6 +217,17 @@ def process_validation_queue(db) -> Dict[str, Any]:
         if verdict["verdict"] == "confirmed":
             boost_pheromone(db, kid, VERIFICATION_BOOST)
             _update_trust(db, kid, delta=+0.05)
+            # G1: 自动推进假设门控 — 机器可判门 (in_scope/deduplicated) 自动判定,
+            # 其余门 blocked 等人工/独立 agent 补证据; 假设不再永远卡在 'hypothesis'
+            hypothesis = db.fetch_one(
+                "SELECT hypothesis_id FROM finding_hypotheses WHERE knowledge_id=?",
+                (kid,),
+            )
+            if hypothesis:
+                try:
+                    auto_apply_machine_gates(db, hypothesis["hypothesis_id"])
+                except Exception as exc:  # 门控失败不阻断验证主流程
+                    _log.warning("auto gate apply failed for %s: %s", kid, exc)
             confirmed += 1
         elif verdict["verdict"] == "refuted":
             _update_trust(db, kid, delta=-REFUTE_PENALTY)
@@ -210,7 +251,12 @@ def process_validation_queue(db) -> Dict[str, Any]:
     }
 
 
-def _auto_verify(db, knowledge_id: str, item: dict) -> Dict[str, str]:
+def _auto_verify(
+    db,
+    knowledge_id: str,
+    item: dict,
+    replay_verifier: Optional[ReplayVerifier] = None,
+) -> Dict[str, str]:
     """
     自动验证逻辑 (无需外部 agent)。
 
@@ -218,6 +264,12 @@ def _auto_verify(db, knowledge_id: str, item: dict) -> Dict[str, str]:
     1. 是否有其他 agent 独立报告了类似发现 (lineage 中有 >1 个 source)
     2. 是否存在反例 (counter_examples)
     3. 原始内容是否包含可验证的特征 (URL/IP/CVE/命令输出)
+
+    G2 约定 (2026-08-11 修复):
+    - 库内 lineage 计数 / 文本特征仅作线索, 不单独构成 confirmed 证据
+    - HIGH (knowledge level >= REPLAY_REQUIRED_LEVEL) 的条目:
+        * 有 replay_verifier → 必须真实复现成功才 confirmed, 失败则 refuted
+        * 无 replay_verifier → 最高判 inconclusive (提示需外部复现)
     """
     reasons = []
     score = 0
@@ -225,8 +277,8 @@ def _auto_verify(db, knowledge_id: str, item: dict) -> Dict[str, str]:
     # 检查 1: 交叉验证
     lineage_count = db.fetch_one(
         """SELECT COUNT(DISTINCT source_type) AS c
-           FROM knowledge_lineage
-           WHERE knowledge_id = ? AND confidence_contribution > 0.5""",
+          FROM knowledge_lineage
+          WHERE knowledge_id = ? AND confidence_contribution > 0.5""",
         (knowledge_id,),
     )
     cross_sources = lineage_count["c"] if lineage_count else 0
@@ -272,8 +324,27 @@ def _auto_verify(db, knowledge_id: str, item: dict) -> Dict[str, str]:
         reasons.append("包含工具输出特征")
         score += 1
 
-    # 决定 verdict
-    if score >= 3:
+    # G2: HIGH 条目必须真实外部复现才能 confirmed
+    level = int(item["level"]) if item["level"] else 0
+    knowledge_type = item["knowledge_type"] or ""
+    is_high = level >= REPLAY_REQUIRED_LEVEL
+    if is_high:
+        if replay_verifier is None:
+            reasons.append(REPLAY_UNVERIFIABLE_HINT)
+            return {"verdict": "inconclusive", "reason": "; ".join(reasons)}
+        try:
+            reproduced, evidence = replay_verifier(knowledge_id, content)
+        except Exception as exc:
+            reasons.append(f"外部复现异常: {exc}")
+            return {"verdict": "inconclusive", "reason": "; ".join(reasons)}
+        if reproduced:
+            reasons.append(f"外部复现确认: {evidence}")
+            return {"verdict": "confirmed", "reason": "; ".join(reasons)}
+        reasons.append(f"外部复现失败: {evidence}")
+        return {"verdict": "refuted", "reason": "; ".join(reasons)}
+
+    # 非 HIGH 条目: 启发式打分, 但必须含可验证特征才 confirmed (库内信号仅线索)
+    if score >= 3 and verifiable:
         return {"verdict": "confirmed", "reason": "; ".join(reasons)}
     elif score < 0:
         return {"verdict": "refuted", "reason": "; ".join(reasons)}
@@ -299,10 +370,10 @@ def _mark_validation_attempt(db, entry_id: str) -> None:
     """记录一次验证尝试，不改变置信度。"""
     db.execute(
         """UPDATE knowledge_entries
-           SET last_validated_at = datetime('now'),
-               validation_count = validation_count + 1,
-               updated_at = datetime('now')
-           WHERE id = ?""",
+          SET last_validated_at = datetime('now'),
+              validation_count = validation_count + 1,
+              updated_at = datetime('now')
+          WHERE id = ?""",
         (entry_id,),
     )
 
@@ -314,7 +385,3 @@ def _record_counter_example(db, knowledge_id: str, reason: str) -> None:
            VALUES (?, ?, 'verification-pipeline', ?, 'moderate')""",
         (str(uuid.uuid4()), knowledge_id, f"验证管道反驳: {reason[:200]}"),
     )
-
-
-# 需要 re
-import re

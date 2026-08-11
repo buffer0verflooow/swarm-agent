@@ -221,6 +221,71 @@ def seed_finding_hypotheses_from_vulnerabilities(
     return {"created": len(created), "hypothesis_ids": created}
 
 
+def auto_apply_machine_gates(db, hypothesis_id: str, *, verified_by: str = "auto-machine-gate") -> Dict[str, Any]:
+    """G1 (2026-08-11 修复): 对已 confirmed 的假设自动判定机器可判门。
+
+    机器可判门:
+    - in_scope: 按 finding_hypotheses.scope_status 判定 (in_scope→pass / out_of_scope→fail)
+    - deduplicated: 按 knowledge_entries.content_hash 查库内重复条目
+    其余门 (poc_exists/clean_repro/impactful/low_priv_reachable) 标记 blocked,
+    由人工或独立验证 agent 经 record_gate_result 补证据后推进。
+
+    只覆盖仍为 pending 的门, 不覆盖人工/独立 agent 已判定结果。
+    返回 evaluate_hypothesis_gates 的聚合结果 (validating/negative_knowledge/validated)。
+    """
+    hypothesis = db.fetch_one(
+        "SELECT * FROM finding_hypotheses WHERE hypothesis_id=?", (hypothesis_id,)
+    )
+    if not hypothesis:
+        raise ValueError(f"hypothesis not found: {hypothesis_id}")
+
+    def _record_if_pending(gate_name: str, status: str, evidence: str) -> None:
+        gate = db.fetch_one(
+            "SELECT status FROM finding_validation_gates WHERE hypothesis_id=? AND gate_name=?",
+            (hypothesis_id, gate_name),
+        )
+        if gate and gate["status"] == "pending":
+            record_gate_result(
+                db, hypothesis_id, gate_name, status,
+                evidence=evidence, verified_by=verified_by,
+            )
+
+    # --- in_scope: 机器可判 (scope_status 已记录时) ---
+    scope = hypothesis["scope_status"] or "unknown"
+    if scope == "in_scope":
+        _record_if_pending("in_scope", "pass", "scope_status=in_scope")
+    elif scope == "out_of_scope":
+        _record_if_pending("in_scope", "fail", "scope_status=out_of_scope")
+    else:
+        _record_if_pending("in_scope", "blocked", "scope_status 未知, 需人工确认")
+
+    # --- deduplicated: 机器可判 (同 content_hash 的 active 条目) ---
+    entry = db.fetch_one(
+        "SELECT content_hash FROM knowledge_entries WHERE id=?",
+        (hypothesis["knowledge_id"],),
+    )
+    dup_count = 0
+    if entry and entry["content_hash"]:
+        dup_count = db.fetch_one(
+            """SELECT COUNT(*) AS c FROM knowledge_entries
+               WHERE content_hash=? AND id!=? AND status='active'""",
+            (entry["content_hash"], hypothesis["knowledge_id"]),
+        )["c"]
+    if dup_count > 0:
+        _record_if_pending(
+            "deduplicated", "fail",
+            f"库内发现 {dup_count} 条相同 content_hash 的重复条目",
+        )
+    else:
+        _record_if_pending("deduplicated", "pass", "库内无 content_hash 重复")
+
+    # --- 其余门: 需人工/独立验证 agent 补证据 ---
+    for gate_name in ("poc_exists", "clean_repro", "impactful", "low_priv_reachable"):
+        _record_if_pending(gate_name, "blocked", "需人工或独立验证 agent 补证据")
+
+    return evaluate_hypothesis_gates(db, hypothesis_id)
+
+
 def record_gate_result(
     db,
     hypothesis_id: str,

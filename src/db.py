@@ -82,6 +82,7 @@ class SwarmDB:
             _log.info("Applied migration: %s", mig.name)
 
         self._ensure_spawn_request_schema()
+        self._ensure_validation_queue_schema()
         _log.info("Database initialized: %s (%d migrations)", self.db_path, len(migrations))
         return True
 
@@ -96,6 +97,80 @@ class SwarmDB:
         if not self._table_exists(table_name):
             return False
         return any(row["name"] == column_name for row in self.fetch_all(f"PRAGMA table_info({table_name})"))
+
+
+    def _ensure_validation_queue_schema(self) -> None:
+        """G3 (2026-08-11): 幂等修复 validation_queue 状态机。
+
+        旧库 (migration 004 已应用) 的 CHECK 约束不含 'inconclusive', 导致
+        inconclusive verdict 只能写 'verified' (状态失真 + 污染数据)。本函数:
+        1. 检测表 DDL 是否已含 'inconclusive', 缺则重建表 (SQLite 无法改 CHECK)
+        2. 清洗存量脏数据: verdict='inconclusive' 但 status='verified' → 'inconclusive'
+        """
+        if not self._table_exists("validation_queue"):
+            return
+        ddl = self.fetch_one(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='validation_queue'"
+        )
+        if ddl and "inconclusive" in (ddl["sql"] or ""):
+            # 表结构已含 inconclusive, 只需清洗脏数据 (幂等)
+            self.conn.execute(
+                """UPDATE validation_queue
+                   SET status = 'inconclusive', updated_at = datetime('now')
+                   WHERE verdict = 'inconclusive' AND status = 'verified'"""
+            )
+            self.conn.commit()
+            return
+
+        # 重建表: 新 CHECK 含 inconclusive
+        with self.transaction():
+            self.conn.execute("ALTER TABLE validation_queue RENAME TO validation_queue_old")
+            self.conn.execute(
+                """CREATE TABLE validation_queue (
+                    validation_id        TEXT PRIMARY KEY,
+                    knowledge_id        TEXT NOT NULL REFERENCES knowledge_entries(id) ON DELETE CASCADE,
+                    run_id              TEXT REFERENCES swarm_runs(run_id) ON DELETE SET NULL,
+                    requested_by        TEXT NOT NULL,
+                    assigned_to         TEXT,
+                    status              TEXT DEFAULT 'pending'
+                                        CHECK (status IN ('pending','assigned','validating','verified','refuted','inconclusive','timeout')),
+                    priority            INTEGER DEFAULT 50,
+                    evidence_hash       TEXT,
+                    original_content    TEXT,
+                    verdict             TEXT,
+                    verdict_reason      TEXT,
+                    validated_at        TEXT,
+                    created_at          TEXT DEFAULT (datetime('now')),
+                    updated_at          TEXT DEFAULT (datetime('now'))
+                )"""
+            )
+            self.conn.execute(
+                """INSERT INTO validation_queue (validation_id, knowledge_id, run_id,
+                                                 requested_by, assigned_to, status,
+                                                 priority, evidence_hash, original_content,
+                                                 verdict, verdict_reason, validated_at,
+                                                 created_at, updated_at)
+                   SELECT v.validation_id, v.knowledge_id, v.run_id,
+                          v.requested_by, v.assigned_to, v.status,
+                          v.priority, v.evidence_hash, v.original_content,
+                          v.verdict, v.verdict_reason, v.validated_at,
+                          v.created_at, v.updated_at
+                   FROM validation_queue_old v
+                   JOIN knowledge_entries ke ON ke.id = v.knowledge_id"""
+            )
+            self.conn.execute("DROP TABLE validation_queue_old")
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_vq_status    ON validation_queue(status)")
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_vq_knowledge ON validation_queue(knowledge_id)")
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_vq_priority ON validation_queue(priority DESC)")
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_vq_run       ON validation_queue(run_id)")
+        # 清洗存量脏数据
+        self.conn.execute(
+            """UPDATE validation_queue
+               SET status = 'inconclusive', updated_at = datetime('now')
+               WHERE verdict = 'inconclusive' AND status = 'verified'"""
+        )
+        self.conn.commit()
+        _log.info("validation_queue rebuilt with 'inconclusive' status + dirty data cleaned")
 
     def _ensure_spawn_request_schema(self) -> None:
         """Apply idempotent spawn_requests schema fixes without new migrations."""

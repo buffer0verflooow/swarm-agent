@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS validation_queue (
     requested_by        TEXT NOT NULL,               -- which agent requested validation
     assigned_to         TEXT,                         -- which agent will validate (NULL = unassigned)
     status              TEXT DEFAULT 'pending'
-                        CHECK (status IN ('pending','assigned','validating','verified','refuted','timeout')),
+                        CHECK (status IN ('pending','assigned','validating','verified','refuted','inconclusive','timeout')),
     priority            INTEGER DEFAULT 50,
     evidence_hash       TEXT,                         -- hash of original evidence for replay
     original_content    TEXT,                         -- snapshot of content at validation request time
