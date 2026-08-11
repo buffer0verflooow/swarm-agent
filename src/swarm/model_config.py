@@ -89,6 +89,9 @@ def _row_to_profile(row) -> Optional[Dict[str, Any]]:
         "tool_policy": _loads(row["tool_policy"], {}),
         "system_prompt": row["system_prompt"] or "",
         "metadata": _loads(row["metadata"], {}),
+        # 第 1 层 (migration 008): 角色技能包。旧库缺列时防御性回退。
+        "load_skills": _loads(row["load_skills"], []) if row.keys() and "load_skills" in row.keys() and row["load_skills"] else [],
+        "tool_allowlist": _loads(row["tool_allowlist"], []) if row.keys() and "tool_allowlist" in row.keys() and row["tool_allowlist"] else [],
     }
 
 

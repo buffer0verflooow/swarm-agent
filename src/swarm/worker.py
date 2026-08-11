@@ -505,6 +505,20 @@ def build_task_context(db, task: Dict[str, Any], max_entries: int = 5) -> str:
                 parts.append("\n## Recent Raw Handoff Events")
                 parts.extend(event_parts)
 
+    # 第 1 层 (2026-08-11, migration 008): 角色技能包注入。
+    # task 的 model_profile.load_skills (claim_once 已解析), 追加为角色技能提示。
+    try:
+        profile = task.get("model_profile") or {}
+        skills = profile.get("load_skills") or []
+        if isinstance(skills, str):
+            skills = _loads_json(skills, [])
+        if isinstance(skills, list) and skills:
+            parts.append(
+                "## Role Skills\n" + "\n".join(f"- {s}" for s in skills)
+            )
+    except Exception:  # noqa: BLE001 — 技能注入失败绝不阻断任务
+        pass
+
     return "\n\n".join(parts)
 
 
