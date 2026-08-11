@@ -23,6 +23,7 @@ from .model_config import (
     resolve_task_model_profile,
 )
 from .artifacts import verify_artifacts
+from .safety import mark_untrusted, sanitize_single_line
 from .work_queue import claim_work_tasks, complete_work_task, fail_work_task
 from ..agents.capture import CaptureContext, CaptureSource, capture
 
@@ -466,9 +467,9 @@ def build_task_context(db, task: Dict[str, Any], max_entries: int = 5) -> str:
                 continue
             parts.append(
                 "\n".join([
-                    f"### {row['title'] or row['id']}",
+                    f"### {sanitize_single_line(row['title'] or row['id'])}",
                     f"type={row['knowledge_type']} level={row['level']} domain={row['domain']}",
-                    (row["content"] or "")[:800],
+                    mark_untrusted((row["content"] or "")[:800]),
                 ])
             )
 
@@ -486,16 +487,23 @@ def build_task_context(db, task: Dict[str, Any], max_entries: int = 5) -> str:
         except Exception:
             raw_events = []
         if raw_events:
-            parts.append("\n## Recent Raw Handoff Events")
+            event_parts = []
             for event in reversed(raw_events):
                 status = event["capture_status"]
+                # filtered 事件（low_signal 等）不注入上下文——被过滤的内容
+                # 仍是不可信文本，且对任务无信息价值（审计 A4）
+                if status == "filtered":
+                    continue
                 reason = f" reason={event['filter_reason']}" if event["filter_reason"] else ""
-                parts.append(
+                event_parts.append(
                     "\n".join([
                         f"### {event['created_at']} {event['source_agent']} {event['source']} status={status}{reason}",
-                        (event["content"] or "")[:500],
+                        mark_untrusted((event["content"] or "")[:500], source="事件"),
                     ])
                 )
+            if event_parts:
+                parts.append("\n## Recent Raw Handoff Events")
+                parts.extend(event_parts)
 
     return "\n\n".join(parts)
 

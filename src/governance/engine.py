@@ -54,10 +54,15 @@ def run_promotion_cycle(db) -> Dict[str, Any]:
         entry_id = row["id"]
         current_level = int(row["level"])
 
-        # 统计 corroborating sources
+        # 统计 corroborating sources — 按 DISTINCT source_agent 计数（审计 A3,
+        # 2026-08-11）：同一 agent 用不同 source_type 刷出的 lineage 只算 1 个
+        # corroborating source；旧 lineage（source_ref 无 source_agent）不计入
+        # （安全方向：晋升变保守，旧数据不放大信任）
         corr = db.fetch_one(
-            "SELECT COUNT(DISTINCT source_type) AS cnt FROM knowledge_lineage "
-            "WHERE knowledge_id = ? AND confidence_contribution > 0.5",
+            """SELECT COUNT(DISTINCT json_extract(source_ref, '$.source_agent')) AS cnt
+               FROM knowledge_lineage
+               WHERE knowledge_id = ? AND confidence_contribution > 0.5
+                 AND json_extract(source_ref, '$.source_agent') IS NOT NULL""",
             (entry_id,),
         )
         count = corr["cnt"] if corr else 0

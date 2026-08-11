@@ -12,12 +12,18 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 from typing import Any, Callable, Dict
 
 from .proc import run_capture_async
 
 DEFAULT_EXECUTOR_TIMEOUT = 1800.0  # 单任务默认超时（秒）— 与 swarm_hermes_executor 内部 subprocess timeout=1800 对齐
+
+# executor 环境门（审计 A2, 2026-08-11）：capture.py 的 --force-capture 仅接受
+# 该变量=1 的调用者。command_executor 是蜂群自建 agent 的执行机制，所有经此
+# 运行的 executor 都被视为内部 agent 环境。
+_AGENT_EXEC_ENV = "SWARM_AGENT_EXEC"
 
 
 def _parse_executor_output(stdout: str) -> Any:
@@ -59,7 +65,11 @@ def make_command_executor(
             ensure_ascii=False,
         )
         try:
-            result = await run_capture_async(argv, input=payload, timeout=timeout)
+            exec_env = dict(os.environ)
+            exec_env[_AGENT_EXEC_ENV] = "1"
+            result = await run_capture_async(
+                argv, input=payload, timeout=timeout, env=exec_env
+            )
         except TimeoutError:
             return {
                 "success": False,

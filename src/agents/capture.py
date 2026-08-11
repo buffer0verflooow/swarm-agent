@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -76,26 +77,62 @@ class CaptureContext:
 # Signal Detectors — 判断是否值得入库
 # ============================================================================
 
-def is_worth_capturing(ctx: CaptureContext) -> bool:
+# force_capture 鉴权（审计 A2, 2026-08-11）：
+# force_capture 允许绕过信号过滤器强制入库，必须绑定真实 agent 执行环境。
+# 1) 环境门：仅 SWARM_AGENT_EXEC=1（由 agent_worker/swarm_hermes_executor 注入
+#    executor 环境）下 force_capture 才有效——普通 CLI 用户/任意本机进程没有
+#    该环境变量，无法伪造 agent 身份强制入库。
+# 2) 任务归属：若提供 source_task_id，校验 agent_tasks 中该任务的 agent_id
+#    与 source_agent 一致（防止伪造"某 agent 正在执行某任务"）。
+_FORCE_CAPTURE_ENV = "SWARM_AGENT_EXEC"
+
+
+def _force_capture_authorized(ctx: CaptureContext, db=None) -> bool:
+    if os.environ.get(_FORCE_CAPTURE_ENV) != "1":
+        _log.warning(
+            "capture: force_capture rejected: missing %s=1 source=%s source_agent=%s",
+            _FORCE_CAPTURE_ENV, ctx.source, ctx.source_agent,
+        )
+        return False
+    task_id = ctx.source_task_id
+    if task_id and db is not None:
+        try:
+            row = db.fetch_one(
+                "SELECT agent_id, status FROM agent_tasks WHERE task_id = ?",
+                (task_id,),
+            )
+        except Exception:  # noqa: BLE001 — 归属校验失败按未授权处理
+            row = None
+        if not row or row["agent_id"] != ctx.source_agent:
+            _log.warning(
+                "capture: force_capture rejected: task %s not owned by %s",
+                task_id, ctx.source_agent,
+            )
+            return False
+    return True
+
+
+def is_worth_capturing(ctx: CaptureContext, db=None) -> bool:
     """判断一条内容是否值得进入知识库"""
-    return assess_capture_signal(ctx)["worth_capturing"]
+    return assess_capture_signal(ctx, db=db)["worth_capturing"]
 
 
-def assess_capture_signal(ctx: CaptureContext) -> Dict[str, Any]:
+def assess_capture_signal(ctx: CaptureContext, db=None) -> Dict[str, Any]:
     """Return the signal assessment used before promoting raw events to KB."""
     content = ctx.content.strip()
     if ctx.metadata.get("force_capture"):
         if ctx.source in HIGH_TRUST_SOURCES and (ctx.source_agent or "").strip():
-            _log.warning(
-                "capture: force_capture accepted source=%s source_agent=%s run_id=%s",
-                ctx.source, ctx.source_agent, ctx.source_run_id,
-            )
-            return {
-                "worth_capturing": True,
-                "reason": "forced_capture",
-                "signal_count": _count_signals(ctx),
-                "min_signal": 0,
-            }
+            if _force_capture_authorized(ctx, db=db):
+                _log.warning(
+                    "capture: force_capture accepted source=%s source_agent=%s run_id=%s",
+                    ctx.source, ctx.source_agent, ctx.source_run_id,
+                )
+                return {
+                    "worth_capturing": True,
+                    "reason": "forced_capture",
+                    "signal_count": _count_signals(ctx),
+                    "min_signal": 0,
+                }
         _log.warning(
             "capture: force_capture ignored source=%s source_agent=%s run_id=%s",
             ctx.source, ctx.source_agent, ctx.source_run_id,
@@ -488,7 +525,9 @@ def capture(
         入库的 entry_id，如果被信号过滤器拒绝则返回 None
     """
     if ctx.metadata.get("force_capture") and (
-        ctx.source not in HIGH_TRUST_SOURCES or not (ctx.source_agent or "").strip()
+        ctx.source not in HIGH_TRUST_SOURCES
+        or not (ctx.source_agent or "").strip()
+        or not _force_capture_authorized(ctx, db=db)
     ):
         ctx.metadata = dict(ctx.metadata)
         ctx.metadata.pop("force_capture", None)
@@ -498,7 +537,7 @@ def capture(
         )
 
     # 1. 无损原始事件记录。KB promotion 可以过滤，agent handoff 不能丢原文。
-    assessment = assess_capture_signal(ctx)
+    assessment = assess_capture_signal(ctx, db=db)
     raw_event_id = record_raw_agent_event(
         db,
         ctx,
@@ -678,7 +717,8 @@ def capture(
         )
 
     # 9.7 自动 corroborating — 同 domain + 同 tags 的已有条目自动建立 lineage 关联
-    _auto_corroborate(db, entry_id, classification)
+    # （A3: 传 ctx 做来源独立性校验，防同 run 同 agent 刷 corroboration）
+    _auto_corroborate(db, entry_id, classification, ctx)
 
     # 9.8 Phase A: 自动记录 Worker Signal
     try:
@@ -842,12 +882,16 @@ def _estimate_tokens(content: str, classification: dict) -> int:
     return content_tokens * 3
 
 
-def _auto_corroborate(db, entry_id: str, classification: dict):
+def _auto_corroborate(db, entry_id: str, classification: dict, ctx: Optional[CaptureContext] = None):
     """自动为同 domain + 共享 tags 的已有条目建立 corroborating lineage。
-    
+
     这解决了 DIKW 提升瓶颈: 之前 corroborating 只靠内容哈希去重触发，
     但不同 agent 用不同措辞描述同一现象时不会触发。
     现在通过 domain + tag 语义匹配自动建立关联。
+
+    安全加固（审计 A3, 2026-08-11）: corroboration 仅对【不同 source_agent
+    且不同 source_run_id】的已有条目建立——同一 run 内同一 agent 连发 N 条
+    同 domain+tag 内容刷"多方验证"的攻击被阻断（A3 晋升链滥用）。
     """
     domain = classification.get("domain", "")
     tags = classification.get("tags", [])
@@ -857,7 +901,15 @@ def _auto_corroborate(db, entry_id: str, classification: dict):
     # 找同 domain + 共享至少 1 个 tag 的已有条目
     conditions = ["ke.id != ?", "ke.status = 'active'", "ke.domain = ?"]
     params = [entry_id, domain]
-    
+
+    # 来源独立性约束：仅接受不同 source_agent 且不同 source_run_id 的已有条目
+    if ctx is not None:
+        conditions.append("ke.source_agent != ?")
+        params.append(ctx.source_agent or "")
+        if ctx.source_run_id:
+            conditions.append("ke.source_run_id != ?")
+            params.append(ctx.source_run_id)
+
     if tags:
         tag_conditions = " OR ".join(["ke.tags LIKE ?" for _ in tags[:3]])
         conditions.append(f"({tag_conditions})")
@@ -871,14 +923,19 @@ def _auto_corroborate(db, entry_id: str, classification: dict):
     related = db.fetch_all(sql, tuple(params))
     for r in related:
         related_id = r["id"]
-        # 写入 corroborating lineage (如果不存在)
+        # 写入 corroborating lineage (如果不存在)；source_ref 携带 corroborator
+        # 身份，供 governance 晋升计数按 DISTINCT source_agent 去重（A3）
+        source_ref = {"corroborated_by": entry_id, "method": "domain_tag_match"}
+        if ctx is not None:
+            source_ref["source_agent"] = ctx.source_agent
+            source_ref["run_id"] = ctx.source_run_id
         db.execute(
             """INSERT OR IGNORE INTO knowledge_lineage
                (knowledge_id, source_type, source_ref, extraction_method, confidence_contribution)
                VALUES (?, 'cross_agent_validation', ?, 'pattern_matching', 0.6)""",
             (
                 related_id,
-                json.dumps({"corroborated_by": entry_id, "method": "domain_tag_match"}),
+                json.dumps(source_ref, ensure_ascii=False, default=str),
             ),
         )
 

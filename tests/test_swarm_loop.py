@@ -1195,7 +1195,8 @@ def test_capture_cli_merges_tags_before_store():
 
 
 def test_capture_preserves_filtered_raw_events_for_handoff():
-    """测试低信号内容不进 KB 时仍进入 raw_agent_events 并进入 handoff context"""
+    """测试低信号内容不进 KB 时仍进入 raw_agent_events（数据无损），但按安全契约
+    （审计 A4, 2026-08-11）不注入 worker context——被过滤内容仍是不可信文本。"""
     print("\n=== Test: Lossless Raw Capture ===")
     db = setup_test_db()
     run_id = create_test_run(db)
@@ -1229,8 +1230,10 @@ def test_capture_preserves_filtered_raw_events_for_handoff():
     )
     task = dict(db.fetch_one("SELECT * FROM agent_tasks WHERE task_id=?", (task_id,)))
     context = build_task_context(db, task)
-    assert "Recent Raw Handoff Events" in context
-    assert "too short" in context
+    # 安全契约（审计 A4）: filtered 事件保留在 raw_agent_events 表（数据无损），
+    # 但不注入 worker context——被过滤内容仍是不可信文本，且对任务无信息价值
+    assert "Recent Raw Handoff Events" not in context
+    assert "too short" not in context
 
     untrusted_forced_ctx = CaptureContext(
         source=CaptureSource.CONVERSATION,

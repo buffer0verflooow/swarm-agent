@@ -28,6 +28,7 @@ import uuid
 from typing import Any, Callable, Dict, List, Optional
 
 from .lifecycle import cleanup_stale_agents, get_live_agents
+from .safety import mark_untrusted, sanitize_single_line
 from .spawner import (
     request_spawn,
     build_spawn_dedup_key,
@@ -288,7 +289,7 @@ class SwarmOrchestrator:
             for role in roles_to_spawn:
                 if spawned >= self.MAX_AUTO_SPAWN_PER_TICK:
                     break
-                reason = f"Stigmergy: 发现 [{entry['knowledge_type']}] L{entry['level']} '{entry['title'][:80]}'"
+                reason = f"Stigmergy: 发现 [{entry['knowledge_type']}] L{entry['level']} '{sanitize_single_line(entry['title'])}'"
                 if self._active_stigmergy_spawn_exists(run_id, entry["id"], role, reason):
                     continue
                 request_spawn(
@@ -723,8 +724,8 @@ class SwarmOrchestrator:
                     (eid,),
                 )
                 if row:
-                    parts.append(f"\n### [{row['knowledge_type']}] L{row['level']}: {row['title']}")
-                    parts.append(row["content"][:500])
+                    parts.append(f"\n### [{row['knowledge_type']}] L{row['level']}: {sanitize_single_line(row['title'])}")
+                    parts.append(mark_untrusted(row["content"][:500]))
 
         # 注入相关策略规则
         try:
@@ -733,7 +734,7 @@ class SwarmOrchestrator:
             if rules:
                 parts.append("\n## 已知策略规则")
                 for r in rules:
-                    parts.append(f"- **{r['rule_name']}** (p={r['priority']}): {r['rule_body'][:200]}")
+                    parts.append(f"- **{sanitize_single_line(r['rule_name'])}** (p={r['priority']}): {mark_untrusted(r['rule_body'][:200], source='策略规则')}")
         except Exception:
             pass
 
@@ -777,7 +778,7 @@ class SwarmOrchestrator:
                     (eid,),
                 )
                 if row:
-                    parts.append(f"- [{row['knowledge_type']}] L{row['level']}: {row['title'][:100]}")
+                    parts.append(f"- [{row['knowledge_type']}] L{row['level']}: {sanitize_single_line(row['title'], max_len=100)}")
 
         return "\n".join(parts)
 
