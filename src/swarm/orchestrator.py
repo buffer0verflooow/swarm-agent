@@ -40,6 +40,8 @@ from .spawner import (
 )
 from .action_value import maybe_rescore_pending
 from .work_queue import claim_work_tasks, poll_work_tasks, recover_stale_work_claims
+from .quota import ExecutionQuota
+from .memory_reclaim import release_unused_memory
 
 _log = logging.getLogger("swarm_knowledge.orchestrator")
 
@@ -73,10 +75,16 @@ class SwarmOrchestrator:
     spawn 请求会被记录但不执行。
     """
 
-    def __init__(self, db):
+    def __init__(self, db, max_concurrent_spawns: int = 4, max_spawns_per_minute: int = 8):
         self.db = db
         self.spawn_handler: Optional[Callable] = None
         self._stopped = False
+        # 执行配额（DeepTutor quota 移植）：并发上限 + 60s 滑动窗口速率，
+        # 防扫描类任务跑飞/突发触发目标限速（CF 429 跨 Phase 传染）
+        self.quota = ExecutionQuota(
+            max_concurrent=max_concurrent_spawns,
+            max_per_minute=max_spawns_per_minute,
+        )
 
     def set_spawn_handler(self, handler: Callable):
         """设置 Agent 生成回调（由外部集成提供）"""
@@ -178,6 +186,17 @@ class SwarmOrchestrator:
             _log.debug("Spawn: no available slots (%d/%d), skipping tick", live_count, MAX_AGENTS_PER_RUN)
             return
 
+        # 执行配额（DeepTutor quota 移植）：并发/速率不足时本 tick 不 spawn，
+        # 请求保持排队不拒绝
+        if not self.quota.can_acquire():
+            _log.debug(
+                "Spawn: quota exhausted (concurrent=%d/min=%d), skipping tick",
+                self.quota.max_concurrent,
+                self.quota.max_per_minute,
+            )
+            return
+        available_slots = min(available_slots, self.quota.max_concurrent)
+
         pending = claim_spawn_requests(self.db, run_id, limit=available_slots)
 
         for req in pending:
@@ -213,6 +232,11 @@ class SwarmOrchestrator:
                             req["request_id"],
                         )
                         continue
+                    # 配额：一次成功 spawn = 一次速率单位（acquire 已通过 can_acquire，立即返回）
+                    try:
+                        await self.quota.acquire()
+                    except Exception:  # noqa: BLE001 — 配额故障不应阻断 spawn 流程
+                        _log.exception("Spawn: quota.acquire failed")
                     self._log_behavior(run_id, "emergence",
                         f"{req['requesting_agent']} 触发生成 {req['requested_role']} ({agent_id[:8]})")
                     _log.info("Spawn: fulfilled %s → %s (%s)",
@@ -395,6 +419,12 @@ class SwarmOrchestrator:
         stale = cleanup_stale_agents(self.db)
         if stale:
             _log.warning("Heartbeat: cleaned %d stale agents: %s", len(stale), [s[:8] for s in stale])
+            # 执行配额：清理的 agent 释放并发槽（配额故障不阻断清理）
+            for _ in stale:
+                try:
+                    self.quota.release()
+                except Exception:  # noqa: BLE001
+                    _log.debug("Heartbeat: quota.release skipped (no held slot)")
             self._log_behavior(
                 run_id, "adaptation",
                 f"清理僵尸 Agent: {[s[:8] for s in stale]}",
@@ -473,6 +503,18 @@ class SwarmOrchestrator:
                     run_id, "emergence",
                     f"本体发现: {len(onto_result['discovered'])} 条新关系",
                 )
+
+            # 内存回收：治理周期结束后归还空闲堆页（节流由模块内部处理，
+            # 失败绝不能炸治理 tick）
+            try:
+                collected, trimmed = release_unused_memory()
+                if collected or trimmed:
+                    _log.debug(
+                        "Governance: memory reclaim collected=%d trimmed=%s",
+                        collected, trimmed,
+                    )
+            except Exception:  # noqa: BLE001
+                pass
 
         except Exception as e:
             _log.warning("Governance: failed: %s", e)

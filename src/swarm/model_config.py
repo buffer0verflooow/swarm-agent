@@ -8,9 +8,11 @@ not decide or claim internal role/model assignments directly.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import uuid
-from typing import Any, Dict, List, Optional
+from contextvars import ContextVar
+from typing import Any, Dict, Iterator as IteratorT, List, Optional
 
 
 def _json_text(value: Any) -> str:
@@ -26,6 +28,49 @@ def _loads(value: Any, default: Any) -> Any:
         return json.loads(value)
     except (json.JSONDecodeError, TypeError):
         return default
+
+
+# 调用级模型作用域（DeepTutor request-scoped 模型选择移植）：
+# with model_scope(...) 块内 get_model_profile()/resolve_task_model_profile()
+# 返回覆盖配置；块外自动恢复。contextvars 实现，async 安全。
+_model_scope: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
+    "model_scope", default=None
+)
+
+
+@contextlib.contextmanager
+def model_scope(
+    db,
+    role: str,
+    profile_id: Optional[str] = None,
+    **overrides,
+) -> IteratorT[Optional[Dict[str, Any]]]:
+    """调用级模型作用域。
+
+    with 块内 get_model_profile()/resolve_task_model_profile() 解析 role 的
+    profile 并应用 overrides（可覆盖 provider/model/max_tokens/temperature/
+    priority 等字段）；块外自动恢复。overrides 为空时仅返回解析结果不改变行为。
+
+    用法:
+        with model_scope(db, "capture", model="deepseek-v4-flash"):
+            prof = get_model_profile(db, "capture")  # model 被覆盖
+        prof = get_model_profile(db, "capture")      # 恢复原值
+
+    仅对声明时的 role 生效；其他 role 的解析不受影响。
+    """
+    base = get_model_profile(db, role, profile_id=profile_id)
+    if base is not None:
+        scoped = dict(base)
+        scoped["role"] = role  # 以声明 role 为准（base 可能来自 custom 兜底）
+        scoped.update({k: v for k, v in overrides.items() if v is not None})
+    else:
+        # role 无 profile 时构造轻量覆盖配置
+        scoped = {"role": role, **{k: v for k, v in overrides.items() if v is not None}}
+    token = _model_scope.set(scoped)
+    try:
+        yield scoped
+    finally:
+        _model_scope.reset(token)
 
 
 def _row_to_profile(row) -> Optional[Dict[str, Any]]:
@@ -71,7 +116,14 @@ def get_model_profile(
     role: str,
     profile_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Return the swarm-selected model profile for a role."""
+    """Return the swarm-selected model profile for a role.
+
+    调用级作用域（model_scope）优先：scope 内且 role 匹配时直接返回覆盖配置，
+    不再查库。
+    """
+    scoped = _model_scope.get()
+    if scoped is not None and scoped.get("role") == role:
+        return scoped
     if profile_id:
         row = db.fetch_one(
             "SELECT * FROM model_profiles WHERE profile_id = ? AND enabled = 1",
