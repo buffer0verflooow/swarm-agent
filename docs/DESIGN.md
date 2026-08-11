@@ -221,8 +221,8 @@ Phase 4: 跨蜂群知识共享
 ```
 swarm-knowledge/
 ├── scripts/                         # CLI 入口 (swarmctl/agent_worker/init_db/...)
-│   ├── start_swarm.py                   # 创建 run 并发布市场 seed tasks
-│   ├── swarmctl.py                      # 模型 profile、对话事件、run summary 控制面
+│   ├── swarmctl.py                      # run/任务/查询/模型 profile/事件/摘要 控制面
+│   ├── agent_worker.py                  # 单 worker CLI (claim → executor → complete)
 ├── migrations/
 │   ├── 001_schema.sql              # SQLite 核心表 + 种子本体
 │   ├── 002_swarm_extensions.sql    # spawn_requests + heartbeats

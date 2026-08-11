@@ -58,7 +58,7 @@
 - `L4 Wisdom = 0` 条目 — 架构文档明确标注 `(0)` 且虚线边框
 - 没有 `prophet.py` 或类似文件
 - Controller prompt 模板中不包含"历史模式回顾"部分
-- Cross-run 学习不存在: 每个 `start_swarm.py --intent recon` 从零开始
+- Cross-run 学习不存在: 每个 `swarmctl.py run --intent recon` 从零开始
 
 **必需的闭环**: `历史结果 → 提炼先验 → 生成下一轮假设与探索方向 → 结果回灌`
 
