@@ -505,8 +505,8 @@ async def test_swarm_runner_executes_multi_worker_pool():
 
 
 def test_start_swarm_cli_outputs_seeded_run():
-    """测试 start_swarm.py CLI 创建 run 并输出 seed tasks"""
-    print("\n=== Test: Start Swarm CLI ===")
+    """测试 swarmctl.py run CLI 创建 run 并输出 seed tasks（原 start_swarm.py 吸收后）"""
+    print("\n=== Test: Start Swarm CLI ===\n")
     db_path = "/tmp/test_start_swarm_cli.db"
     if os.path.exists(db_path):
         os.remove(db_path)
@@ -515,8 +515,9 @@ def test_start_swarm_cli_outputs_seeded_run():
     result = subprocess.run(
         [
             sys.executable,
-            os.path.join(repo, "scripts", "start_swarm.py"),
+            os.path.join(repo, "scripts", "swarmctl.py"),
             "--db", db_path,
+            "run",
             "--name", "cli-swarm",
             "--intent", "recon",
             "--target-type", "webapp",

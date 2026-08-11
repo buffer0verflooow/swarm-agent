@@ -20,7 +20,7 @@ python scripts/init_db.py
 python scripts/swarmctl.py submit --goal "分析目标 X 的攻击面"
 
 # 5. 启动蜂群运行
-python scripts/start_swarm.py --run-id <run_id>
+python scripts/swarmctl.py run --target <target_id> --intent recon
 ```
 
 ## 蜂群算法总览

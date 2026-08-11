@@ -256,7 +256,7 @@ src/
   scripts/swarmctl.py task submit/status/result
      → 外部工具下发任务、查询状态、获取结果
 
-  scripts/start_swarm.py / scripts/swarmctl.py models
+  scripts/swarmctl.py run / scripts/swarmctl.py models
      → 创建 run、维护模型 profile、记录事件、生成 summary
 
   scripts/agent_worker.py / SwarmWorker
@@ -276,7 +276,7 @@ src/
 1. ✅ `scripts/capture.py` 已写
 2. ✅ `work_queue.py` 已把 `agent_tasks` 变成共享任务市场
 3. ✅ `worker.py` / `scripts/agent_worker.py` 已支持 claim → execute/manual complete
-4. ✅ `run_manager.py` / `scripts/start_swarm.py` 已支持市场化 run 初始化
+4. ✅ `run_manager.py` / `scripts/swarmctl.py run` 已支持市场化 run 初始化
 5. ✅ `model_config.py` / `scripts/swarmctl.py` 已支持蜂群自维护模型 profile 和 run summary
 6. 🔲 在外部 swarm-hunt/Claude/Hermes/Codex 执行器中接入 worker loop
 7. 🔲 在客户端中集成 `on_user_correction` 钩子

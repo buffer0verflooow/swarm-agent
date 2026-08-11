@@ -18,7 +18,7 @@ from typing import Any, Dict
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from src import SwarmDB
+from src import SwarmDB, search
 from src.swarm.client_api import (
     get_swarm_result,
     get_swarm_status,
@@ -32,6 +32,7 @@ from src.swarm.model_config import (
     record_swarm_event,
     upsert_model_profile,
 )
+from src.swarm.run_manager import create_seeded_swarm_run
 
 ROLES = ["scanner", "analyst", "exploiter", "reporter", "orchestrator", "custom"]
 INTENTS = ["recon", "exploit", "analyze", "defend", "report", "custom"]
@@ -201,6 +202,70 @@ def cmd_task_wait(db: SwarmDB, args) -> int:
     return 1 if result.get("timed_out") else 0
 
 
+def cmd_run(db: SwarmDB, args) -> int:
+    """启动蜂群 run（吸收原 start_swarm.py）。"""
+    result = create_seeded_swarm_run(
+        db,
+        swarm_name=args.name,
+        intent=args.intent,
+        target_type=args.target_type,
+        target_id=args.target,
+        profile=args.profile,
+    )
+    if args.json:
+        _print_json(result)
+        return 0
+
+    run_id = result["run_id"]
+    print(f"RUN:{run_id}")
+    print(f"Seeded tasks: {len(result['seeded_tasks'])}")
+    print(f"Min agents: {json.dumps(result.get('min_agents_by_role', {}), ensure_ascii=False)}")
+    for task in result["seeded_tasks"]:
+        profile = task.get("model_profile") or {}
+        model = (
+            f"{profile.get('provider')}/{profile.get('model')}"
+            if profile else "unassigned"
+        )
+        print(
+            f"- {task['required_role']}:{task['task_type']} p={task['priority']} "
+            f"{task['task_id'][:8]} model={model} {task['name']}"
+        )
+
+    role_counts = result.get("min_agents_by_role") or {
+        role: 1 for role in sorted({task["required_role"] for task in result["seeded_tasks"]})
+    }
+    print("\nWorker claim commands:")
+    for role, count in sorted(role_counts.items()):
+        for idx in range(1, int(count) + 1):
+            print(
+                "python3 "
+                f"{REPO / 'agent_worker.py'} --db {args.db} --run-id {run_id} "
+                f"--agent {role}-{idx:02d} --role {role} --claim-only"
+            )
+    return 0
+
+
+def cmd_query(db: SwarmDB, args) -> int:
+    """查询知识库（吸收原 query_kb.py，通用化：任意查询词）。"""
+    results = search(db, args.query, level_min=args.level_min, limit=args.limit)
+    if args.json:
+        _print_json({"query": args.query, "results": results})
+        return 0
+    if not results:
+        print(f"No knowledge entries for query: {args.query}")
+        return 0
+    for item in results:
+        level = item.get("level", "?")
+        ktype = item.get("knowledge_type", "?")
+        title = item.get("title") or item.get("content", "")[:60]
+        print(f"[L{level}] ({ktype}) {title}")
+        content = item.get("content", "")
+        if content:
+            print(content[:300])
+        print("---")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Control swarm model config and run summaries")
     parser.add_argument("--db", default=str(REPO / "swarm_knowledge.db"), help="SQLite DB path")
@@ -283,6 +348,22 @@ def build_parser() -> argparse.ArgumentParser:
     summary.add_argument("--limit-events", type=int, default=10)
     summary.add_argument("--json", action="store_true")
     summary.set_defaults(func=cmd_summary)
+
+    run = sub.add_parser("run", help="Start a market-driven swarm run (was start_swarm.py)")
+    run.add_argument("--name", default="swarm-run", help="Swarm run name")
+    run.add_argument("--intent", default="recon", choices=INTENTS)
+    run.add_argument("--target-type", default="webapp", choices=TARGET_TYPES)
+    run.add_argument("--target", required=True, help="Target identifier")
+    run.add_argument("--profile", default="balanced", choices=["balanced", "breadth", "depth"])
+    run.add_argument("--json", action="store_true")
+    run.set_defaults(func=cmd_run)
+
+    query = sub.add_parser("query", help="Query the swarm knowledge base (was query_kb.py)")
+    query.add_argument("--query", required=True, help="Search query text")
+    query.add_argument("--level-min", type=int, default=2, help="Minimum DIKW level (default 2)")
+    query.add_argument("--limit", type=int, default=5, help="Max results (default 5)")
+    query.add_argument("--json", action="store_true")
+    query.set_defaults(func=cmd_query)
 
     return parser
 

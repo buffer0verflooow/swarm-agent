@@ -212,7 +212,7 @@ VULN_DENSITY_THRESHOLD   = 0.15 # 知识中漏洞占比 >15% → 切 depth
 | 入口 | 用途 |
 |---|---|
 | `scripts/swarmctl.py submit` | 外部客户端提交任务 |
-| `scripts/start_swarm.py --run-id X` | 播种初始任务入市场 |
+| `scripts/swarmctl.py run --target X` | 播种初始任务入市场 |
 | `scripts/swarm_runner.py` | 本地多 worker 池运行 |
 | `scripts/agent_worker.py --claim-only` | 单 worker 领取一步 |
 | `scripts/capture.py` | 子 agent 一键知识捕获 |
