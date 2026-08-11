@@ -76,9 +76,16 @@ class SwarmOrchestrator:
     spawn 请求会被记录但不执行。
     """
 
-    def __init__(self, db, max_concurrent_spawns: int = 4, max_spawns_per_minute: int = 8):
+    def __init__(
+        self,
+        db,
+        max_concurrent_spawns: int = 4,
+        max_spawns_per_minute: int = 8,
+        replay_verifier: Optional[Callable] = None,
+    ):
         self.db = db
         self.spawn_handler: Optional[Callable] = None
+        self.replay_verifier = replay_verifier  # G2: 外部复现验证器 (None=安全降级)
         self._stopped = False
         # 执行配额（DeepTutor quota 移植）：并发上限 + 60s 滑动窗口速率，
         # 防扫描类任务跑飞/突发触发目标限速（CF 429 跨 Phase 传染）
@@ -472,9 +479,9 @@ class SwarmOrchestrator:
             if distill_result.get("distilled"):
                 _log.info("Governance: auto-distilled %d strategies", len(distill_result["distilled"]))
 
-            # 独立验证 pipeline
+            # 独立验证 pipeline (G2: 传入外部复现验证器; None 时 HIGH 条目最高 inconclusive)
             auto_enqueue_validations(self.db, run_id)
-            verify_result = process_validation_queue(self.db)
+            verify_result = process_validation_queue(self.db, replay_verifier=self.replay_verifier)
             if verify_result.get("processed", 0) > 0:
                 _log.info("Governance: verified %d (confirmed=%d, refuted=%d)",
                           verify_result["processed"],

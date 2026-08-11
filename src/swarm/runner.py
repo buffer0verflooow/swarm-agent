@@ -51,11 +51,14 @@ class SwarmRunner:
         role_counts: Optional[Dict[str, int]] = None,
         poll_interval: float = 0.1,
         orchestrator: Optional[SwarmOrchestrator] = None,
+        replay_verifier: Optional[Callable] = None,
     ):
         self.db = db
         self.role_counts = role_counts
         self.poll_interval = max(0.01, float(poll_interval))
-        self.orchestrator = orchestrator or SwarmOrchestrator(db)
+        if orchestrator is None:
+            orchestrator = SwarmOrchestrator(db, replay_verifier=replay_verifier)
+        self.orchestrator = orchestrator
 
     def role_counts_for_run(self, run_id: str) -> Dict[str, int]:
         if self.role_counts:

@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict
@@ -68,7 +69,16 @@ async def main_async() -> int:
     db = SwarmDB(args.db)
     _ensure_schema(db)
     command_executor = make_command_executor(args.executor_command)
-    runner = SwarmRunner(db, role_counts=_parse_counts(args.role_counts) or None)
+    # G2: 外部复现验证器。授权目标经 SWARM_REPLAY_AUTHORIZED_TARGETS 显式启用
+    # (逗号分隔 host), 未设置时安全降级: HIGH 条目保持 inconclusive, 不对外请求。
+    from src.governance.replay_verifier import verifier_from_env
+
+    replay_verifier = verifier_from_env(os.environ.get("SWARM_REPLAY_AUTHORIZED_TARGETS"))
+    runner = SwarmRunner(
+        db,
+        role_counts=_parse_counts(args.role_counts) or None,
+        replay_verifier=replay_verifier,
+    )
     result = await runner.run_until_idle(
         args.run_id,
         adapt_executor_factory(lambda role, agent_id: command_executor),
