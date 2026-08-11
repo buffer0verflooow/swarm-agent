@@ -1,0 +1,12 @@
+{
+ "mode": "baseline",
+ "rounds": [
+  {
+   "run": 1,
+   "ok": false,
+   "detail": "未崩溃 rc=0 | file: /home/pwn/workspace/research/pwncollege-build/agent_exploit.elf: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), no program ",
+   "secs": 48.5,
+   "fix_attempts": null
+  }
+ ]
+}

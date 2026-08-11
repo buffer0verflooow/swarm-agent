@@ -1,0 +1,40 @@
+{
+ "mode": "baseline",
+ "rounds": [
+  {
+   "run": 1,
+   "ok": true,
+   "detail": "崩溃! signal=11 rc=-11",
+   "secs": 6.7,
+   "fix_attempts": 1
+  },
+  {
+   "run": 2,
+   "ok": true,
+   "detail": "崩溃! signal=11 rc=-11",
+   "secs": 6.5,
+   "fix_attempts": 1
+  },
+  {
+   "run": 3,
+   "ok": true,
+   "detail": "崩溃! signal=11 rc=-11",
+   "secs": 6.8,
+   "fix_attempts": 1
+  },
+  {
+   "run": 4,
+   "ok": true,
+   "detail": "崩溃! signal=11 rc=-11",
+   "secs": 8.9,
+   "fix_attempts": 2
+  },
+  {
+   "run": 5,
+   "ok": true,
+   "detail": "崩溃! signal=11 rc=-11",
+   "secs": 6.2,
+   "fix_attempts": 1
+  }
+ ]
+}
