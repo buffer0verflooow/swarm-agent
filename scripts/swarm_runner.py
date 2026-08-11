@@ -75,6 +75,17 @@ async def main_async() -> int:
         max_rounds=args.max_rounds,
         idle_round_limit=args.idle_rounds,
     )
+
+    # 收尾：写回 run 状态（此前 runner 退出不更新，成功 run 永远显示 running，
+    # 只有 failed 靠其他路径标记——2026-08-11 审计执行时发现）
+    _final_status = (
+        "completed" if (result.task_counts.get("failed") or 0) == 0 else "failed"
+    )
+    db.execute(
+        "UPDATE swarm_runs SET status = ?, updated_at = datetime('now') WHERE run_id = ?",
+        (_final_status, result.run_id),
+    )
+    db.conn.commit()
     db.close()
 
     payload = {
