@@ -20,12 +20,98 @@ from __future__ import annotations
 
 import inspect
 import logging
+import string
 import uuid
 from typing import Any, Callable, Dict, Optional
 
 from .lifecycle import AgentLifecycle
 
 _log = logging.getLogger("swarm_knowledge.spawn_handler")
+
+# 已知角色集合 — 派发前预检用（DeepTutor tool_arg_guard 模式移植）
+KNOWN_ROLES = {"scanner", "analyst", "exploiter", "reporter", "orchestrator"}
+
+
+def validate_spawn_request(spawn_request: dict) -> dict:
+    """派发前参数预检（DeepTutor tool_arg_guard 模式移植）。
+
+    畸形 spawn 请求在派发前被拦截，返回结构化错误（缺哪个必填参数 + 期望形状），
+    而不是让模板 format 炸 KeyError 或静默生成坏 goal。
+
+    Returns:
+        {"ok": bool, "errors": [str, ...]} — errors 每条形如
+        "field=run_id: missing (expected str)"
+    """
+    errors: list[str] = []
+
+    def _check_type(name: str, value: Any, expected: str) -> None:
+        if value is None:
+            return  # None 视为未提供，由必填规则报
+        types = {
+            "str": str,
+            "int": int,
+            "bool": bool,
+        }
+        if expected == "int" and isinstance(value, bool):
+            errors.append(f"field={name}: expected int, got bool")
+            return
+        if not isinstance(value, types[expected]):
+            errors.append(
+                f"field={name}: expected {expected}, got {type(value).__name__}"
+            )
+
+    run_id = spawn_request.get("run_id")
+    if not run_id:
+        errors.append("field=run_id: missing (expected str)")
+    else:
+        _check_type("run_id", run_id, "str")
+
+    role = spawn_request.get("requested_role")
+    if not role:
+        errors.append("field=requested_role: missing (expected str)")
+    else:
+        _check_type("requested_role", role, "str")
+        if role not in KNOWN_ROLES:
+            errors.append(
+                f"field=requested_role: unknown role {role!r} "
+                f"(expected one of: {', '.join(sorted(KNOWN_ROLES))})"
+            )
+
+    if "reason" in spawn_request and spawn_request["reason"] is not None:
+        _check_type("reason", spawn_request["reason"], "str")
+
+    if spawn_request.get("chain_depth") is not None:
+        _check_type("chain_depth", spawn_request["chain_depth"], "int")
+        if isinstance(spawn_request["chain_depth"], int) and not isinstance(
+            spawn_request["chain_depth"], bool
+        ):
+            if spawn_request["chain_depth"] < 0:
+                errors.append("field=chain_depth: expected int >= 0")
+
+    if spawn_request.get("max_chain_depth") is not None:
+        _check_type("max_chain_depth", spawn_request["max_chain_depth"], "int")
+        if isinstance(spawn_request["max_chain_depth"], int) and not isinstance(
+            spawn_request["max_chain_depth"], bool
+        ):
+            if spawn_request["max_chain_depth"] < 1:
+                errors.append("field=max_chain_depth: expected int >= 1")
+
+    if "parent_task_id" in spawn_request and spawn_request["parent_task_id"] is not None:
+        _check_type("parent_task_id", spawn_request["parent_task_id"], "str")
+
+    if "worker_mode" in spawn_request and spawn_request["worker_mode"] is not None:
+        _check_type("worker_mode", spawn_request["worker_mode"], "bool")
+
+    return {"ok": not errors, "errors": errors}
+
+
+def _template_required_fields(template: str) -> set[str]:
+    """提取 format 模板所需占位符字段名（防 format KeyError 静默炸）。"""
+    fields: set[str] = set()
+    for _, field_name, _, _ in string.Formatter().parse(template):
+        if field_name:
+            fields.add(field_name.split(".")[0].split("[")[0])
+    return fields
 
 
 class BaseSpawnHandler:
@@ -45,6 +131,12 @@ class BaseSpawnHandler:
         Returns:
             agent_id (成功) 或 None (失败)
         """
+        # 派发前参数预检 — 畸形请求直接拦截，不进入 create_agent
+        validation = validate_spawn_request(spawn_request)
+        if not validation["ok"]:
+            for err in validation["errors"]:
+                _log.error("SpawnHandler: invalid spawn request: %s", err)
+            return None
         try:
             agent_id = await self.create_agent(spawn_request, context)
             if agent_id:
@@ -213,16 +305,35 @@ class HermesSpawnHandler(BaseSpawnHandler):
         worker_mode = spawn_request.get("worker_mode", False)
 
         template = self.GOAL_TEMPLATES.get(role, self.GOAL_TEMPLATES["scanner"])
-        goal = template.format(
-            reason=reason,
-            context=context,
-            chain_depth=chain_depth,
-            max_chain_depth=max_chain_depth,
-            agent_label=f"{role}-{fallback_agent_id[:8]}",
-            run_id=spawn_request["run_id"],
-            parent_task_id=parent_task_id,
-            role=role,
-        )
+
+        # 双保险：__call__ 可能被子类绕过，create_agent 自身也校验一次
+        validation = validate_spawn_request(spawn_request)
+        if not validation["ok"]:
+            for err in validation["errors"]:
+                _log.error("HermesSpawnHandler: invalid spawn request: %s", err)
+            return None
+
+        # 模板占位符预检：缺失字段补齐为空串，防 format KeyError 静默炸
+        template_kwargs = {
+            "reason": reason,
+            "context": context,
+            "chain_depth": chain_depth,
+            "max_chain_depth": max_chain_depth,
+            "agent_label": f"{role}-{fallback_agent_id[:8]}",
+            "run_id": spawn_request["run_id"],
+            "parent_task_id": parent_task_id,
+            "role": role,
+        }
+        missing_fields = _template_required_fields(template) - set(template_kwargs)
+        if missing_fields:
+            _log.warning(
+                "HermesSpawnHandler: template for role=%s requires missing fields: %s",
+                role,
+                ", ".join(sorted(missing_fields)),
+            )
+            for f in missing_fields:
+                template_kwargs[f] = ""
+        goal = template.format(**template_kwargs)
 
         # Worker mode: append caveman output directive
         if worker_mode:

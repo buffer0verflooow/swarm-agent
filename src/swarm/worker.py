@@ -30,6 +30,20 @@ _log = logging.getLogger("swarm_knowledge.worker")
 
 Executor = Callable[[Dict[str, Any], str], Any]
 
+# 角色终止 label 集合（DeepTutor LabelProtocol 移植）— controller/runner 只认
+# label 不解析内容，worker 显式声明"我为什么停"：
+#   DONE      — 正常完成任务
+#   BLOCKED   — 遇到不可逾越的障碍（WAF/限速/授权缺失），声明失败
+#   EXHAUSTED — 资源/路径穷尽，没有更多可做
+TERMINAL_LABELS: dict[str, set[str]] = {
+    "scanner": {"DONE", "BLOCKED", "EXHAUSTED"},
+    "analyst": {"DONE", "BLOCKED", "EXHAUSTED"},
+    "exploiter": {"DONE", "BLOCKED", "EXHAUSTED"},
+    "reporter": {"DONE", "BLOCKED"},
+}
+# 兜底角色（custom 等）
+DEFAULT_TERMINAL_LABELS = {"DONE", "BLOCKED", "EXHAUSTED"}
+
 
 @dataclass
 class WorkerResult:
@@ -37,6 +51,7 @@ class WorkerResult:
     status: str
     captured_entry_id: Optional[str] = None
     error: str = ""
+    final_label: str = ""
 
 
 def _loads_json(value: Any, default: Any) -> Any:
@@ -92,6 +107,7 @@ def normalize_executor_result(result: Any) -> Dict[str, Any]:
             "token_cost": int(result.get("token_cost") or 0),
             "result_summary": result.get("result_summary"),
             "error": str(result.get("error", "")),
+            "final_label": str(result.get("final_label", "")),
         }
 
     content = "" if result is None else str(result)
@@ -107,6 +123,7 @@ def normalize_executor_result(result: Any) -> Dict[str, Any]:
         "token_cost": 0,
         "result_summary": None,
         "error": "",
+        "final_label": "",
     }
 
 
@@ -217,6 +234,41 @@ class SwarmWorker:
                 self.lifecycle.beat(current_task_id=None, load=0.0)
                 return WorkerResult(task_id=task_id, status="failed", error=error)
 
+            # 终止 label 声明（DeepTutor LabelProtocol 移植）— 在 artifact
+            # verification 之前处理：label 是 worker 对"我为什么停"的结构化声明
+            final_label = normalized.get("final_label", "") or ""
+            if final_label:
+                terminal = TERMINAL_LABELS.get(self.role, DEFAULT_TERMINAL_LABELS)
+                if final_label not in terminal:
+                    _log.warning(
+                        "worker %s declared label %r not in terminal set for role=%s, ignoring",
+                        self.agent_id,
+                        final_label,
+                        self.role,
+                    )
+                    final_label = ""
+
+            if final_label == "BLOCKED":
+                error = (
+                    normalized["error"]
+                    or f"worker declared BLOCKED: {normalized['content'][:200]}"
+                )
+                fail_work_task(self.db, task_id, error)
+                record_swarm_event(
+                    self.db,
+                    run_id=self.run_id,
+                    event_type="worker_blocked",
+                    source="swarm_worker",
+                    agent_id=self.agent_id,
+                    task_id=task_id,
+                    content=error,
+                    metadata={"final_label": "BLOCKED"},
+                )
+                self.lifecycle.beat(current_task_id=None, load=0.0)
+                return WorkerResult(
+                    task_id=task_id, status="failed", error=error, final_label="BLOCKED"
+                )
+
             artifact_verification = {"ok": True, "artifacts": [], "verified": [], "failed": []}
             if normalized["artifacts"]:
                 artifact_verification = verify_artifacts(
@@ -254,16 +306,22 @@ class SwarmWorker:
                 "model_profile": task.get("model_profile") or {},
                 "artifact_verification": artifact_verification,
             }
+            if final_label:
+                summary["final_label"] = final_label
             complete_work_task(
                 self.db,
                 task_id,
                 result_summary=summary,
                 token_cost=normalized["token_cost"],
             )
+            event_type = {
+                "EXHAUSTED": "worker_exhausted",
+                "DONE": "worker_done",
+            }.get(final_label, "task_completed")
             record_swarm_event(
                 self.db,
                 run_id=self.run_id,
-                event_type="task_completed",
+                event_type=event_type,
                 source="swarm_worker",
                 agent_id=self.agent_id,
                 task_id=task_id,
@@ -273,6 +331,7 @@ class SwarmWorker:
                     "model_profile": task.get("model_profile") or {},
                     "token_cost": normalized["token_cost"],
                     "artifact_verification": artifact_verification,
+                    **({"final_label": final_label} if final_label else {}),
                 },
             )
             self.lifecycle.beat(current_task_id=None, load=0.0)
@@ -280,6 +339,7 @@ class SwarmWorker:
                 task_id=task_id,
                 status="completed",
                 captured_entry_id=captured_entry_id,
+                final_label=final_label,
             )
         except Exception as exc:
             fail_work_task(self.db, task_id, str(exc))
@@ -291,6 +351,7 @@ class SwarmWorker:
         """Run until stopped. max_tasks is useful for bounded workers/tests."""
         processed = 0
         idle_ticks = 0
+        final_label = ""
         while not self._stopped:
             result = await self.run_once()
             if result is None:
@@ -302,10 +363,23 @@ class SwarmWorker:
 
             idle_ticks = 0
             processed += 1
+            if result.final_label:
+                # 终止 label 声明：worker 显式结束，不再空转
+                _log.info(
+                    "worker %s finished with terminal label %s after %d tasks",
+                    self.agent_id,
+                    result.final_label,
+                    processed,
+                )
+                final_label = result.final_label
+                break
             if max_tasks is not None and processed >= max_tasks:
                 break
 
-        return {"processed": processed, "idle_ticks": idle_ticks}
+        stats: Dict[str, Any] = {"processed": processed, "idle_ticks": idle_ticks}
+        if final_label:
+            stats["final_label"] = final_label
+        return stats
 
     def _capture_task_result(self, task: Dict[str, Any], result: Dict[str, Any]) -> Optional[str]:
         focus = _loads_json(task.get("focus_params"), {})
