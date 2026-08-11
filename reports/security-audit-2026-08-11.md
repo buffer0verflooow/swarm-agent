@@ -274,6 +274,42 @@ rows = db.fetch_all(... "MATCH ?" ...)   # FTS5 保留字符 → OperationalErro
 
 ---
 
+## 补充发现（合并自 reporter 原始报告 security-audit-swarm-knowledge-2026-08-11.md，2026-08-11）
+
+reporter worker 直接落盘的原始报告使用 F 编号体系，其中 5 个发现与主版
+A 编号体系不重叠，合并如下：
+
+### A19 [HIGH] agent_worker --complete-task-id 无鉴权完成任意任务 + 伪造入库
+- **位置**: `scripts/agent_worker.py:53-169` `complete_manual_task()`
+- **证据**: :54-61 只查 task 存在 + run_id 匹配 + agent_id 未被占用——**无身份验证**（agent_id 是 `--agent` 参数自报，无 token/签名）；:121-130 `--content` 直接 `capture()` 入库（任意伪造发现）；:63-77 还能改写 agent_profiles.model_profile_id
+- **攻击**: 知道 task_id 即可冒领/伪造任务完成、注入任意知识、篡改模型分配
+- **修复**: ① complete 接口绑定 worker 会话身份（claim 时发 token/签名，complete 时校验）；② model_profile 改写仅 orchestrator 可执行
+
+### A20 [INFO] Controller 明文读取 API key
+- **位置**: `src/swarm/controller.py:536-556`
+- **证据**: 读取 `~/.hermes/config.yaml` 中 zenmux provider 的 api_key 明文用于 HTTP；子进程继承环境（A14）时密钥可达
+- **修复**: 密钥经受控通道注入，executor env 白名单化（A14 P1 项）
+
+### A21 [MED] 探索记忆注入（✅ 已修复）
+- **位置**: `src/swarm/exploration.py:219-280` `build_exploration_context()` → `orchestrator.py:740-754`
+- **证据**: `exploration_trace.py` CLI（scripts/）无鉴权写入 `notes`/`target_url`/`vuln_class`，全部原样注入 spawn context
+- **攻击**: 恶意 agent 写含注入指令的 notes → 所有新 spawn 的 agent 上下文中毒
+- **修复**: ✅ `orchestrator.py` 探索记忆经 `mark_untrusted(source='探索记忆')` 隔离（与 A1/A4 同方案）
+
+### A22 [MED] artifact 校验路径可绕过（/tmp 默认可信 + required=false）
+- **位置**: `src/swarm/artifacts.py:34-58, 86-204`
+- **证据**: :43-48 **默认允许根 = ~/workspace + REPO_ROOT + /tmp**——/tmp 人人可写，任何进程可建文件通过校验；:88-97 dict spec 可指定 `required=false` → 校验全部 `ok=not required` 直接放行；SHA256 只记录不校验内容所有权
+- **攻击**: executor 声明 `/tmp/任意文件` 或 `required:false` 即绕过"必须产出文件"的验证
+- **修复**: 默认允许根移除 /tmp；required=false 语义收紧（仅允许显式声明）
+
+### A23 [MED] 投毒条目自动触发 spawn（stigmergy 放大器）
+- **位置**: `src/agents/capture.py:718-827` + `src/swarm/orchestrator.py:258-311`
+- **证据**: `(vulnerability, attack)` 条目自动发布 analyst/exploiter/report 任务（work_queue.publish_tasks_for_knowledge）；市场容量不足自动 request_spawn；`_tick_stigmergy_spawn` 对 vulnerability/L3+ 条目自动 spawn
+- **攻击**: 投毒一条 `vulnerability` 条目 → 蜂群自动 spawn exploiter 去"验证"（可能对伪造目标发起请求）+ 新 agent prompt 含投毒载荷——投毒自动扩散
+- **修复**: 自动 spawn 前校验条目的来源可信度（A2 鉴权 + A3 独立验证前置）；exploiter 自动 spawn 需人工/独立确认
+
+---
+
 ## 修复状态跟踪（2026-08-11 P0 已实施）
 
 | 发现 | 状态 | 修复 | commit |

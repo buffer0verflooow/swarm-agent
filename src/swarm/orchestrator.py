@@ -745,7 +745,10 @@ class SwarmOrchestrator:
                 from src.swarm.exploration import build_exploration_context
                 exploration_ctx = build_exploration_context(self.db, run_id)
                 if exploration_ctx:
-                    parts.append("\n" + exploration_ctx)
+                    # F1-5（审计 2026-08-11）：exploration_traces.notes 由
+                    # exploration_trace.py CLI 无鉴权写入（攻击者可控），必须
+                    # 隔离标记后才可进入 spawn context
+                    parts.append(mark_untrusted(exploration_ctx, source="探索记忆"))
                     parts.append(
                         "\n> ⚠️ 以上是蜂群已探索的路径记录。你可以用它避免重复已测试的组合，"
                         "但注意：如果之前的测试深度是 'shallow'，你可能需要用更深的技术重新测试。"
