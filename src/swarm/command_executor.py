@@ -15,9 +15,9 @@ import json
 import shlex
 from typing import Any, Callable, Dict
 
-from .proc import run_capture
+from .proc import run_capture_async
 
-DEFAULT_EXECUTOR_TIMEOUT = 300.0  # executor 单任务默认超时（秒）
+DEFAULT_EXECUTOR_TIMEOUT = 1800.0  # 单任务默认超时（秒）— 与 swarm_hermes_executor 内部 subprocess timeout=1800 对齐
 
 
 def _parse_executor_output(stdout: str) -> Any:
@@ -49,7 +49,7 @@ def make_command_executor(
     if not argv:
         raise ValueError("--executor-command cannot be empty")
 
-    def executor(task: Dict[str, Any], context: str) -> Any:
+    async def executor(task: Dict[str, Any], context: str) -> Any:
         payload = json.dumps(
             {
                 "task": task,
@@ -59,7 +59,7 @@ def make_command_executor(
             ensure_ascii=False,
         )
         try:
-            result = run_capture(argv, input=payload, timeout=timeout)
+            result = await run_capture_async(argv, input=payload, timeout=timeout)
         except TimeoutError:
             return {
                 "success": False,

@@ -53,8 +53,14 @@ async def stream_process(
     )
 
     if input is not None and proc.stdin is not None:
-        proc.stdin.write(input.encode("utf-8"))
-        await proc.stdin.drain()
+        try:
+            proc.stdin.write(input.encode("utf-8"))
+            await proc.stdin.drain()
+        except (ConnectionResetError, BrokenPipeError):
+            # 子进程不读 stdin 且已退出（如 echo 类假 executor）时 pipe 关闭属
+            # 正常竞态——忽略，后续 async for 会拿到真实 exit 事件，非零退出
+            # 由调用方（command_executor）处理。
+            pass
         proc.stdin.close()
 
     queue: asyncio.Queue[ProcessLine] = asyncio.Queue()
@@ -147,12 +153,32 @@ def run_capture(
 
     Returns:
         {"exit_code": int, "stdout": str, "stderr": str}
+
+    Note:
+        仅可在【无运行中事件循环】的同步上下文调用（内部 asyncio.run）。
+        事件循环内调用方必须用 run_capture_async（见 command_executor）。
     """
 
-    async def _run() -> dict:
-        return await asyncio.wait_for(
-            _capture_impl(cmd, cwd=cwd, env=env, timeout=timeout, input=input),
-            timeout,
-        )
+    return asyncio.run(
+        run_capture_async(cmd, cwd=cwd, env=env, timeout=timeout, input=input)
+    )
 
-    return asyncio.run(_run())
+
+async def run_capture_async(
+    cmd: Sequence[str],
+    *,
+    cwd: Optional[str] = None,
+    env: Optional[dict] = None,
+    timeout: float = 30.0,
+    input: Optional[str] = None,
+) -> dict:
+    """async 版 run_capture — 供事件循环内调用（swarm runner/worker 链路）。
+
+    与 run_capture 同语义；超时抛 asyncio.TimeoutError，子进程由
+    stream_process 的 finally 清理，不留孤儿。
+    """
+
+    return await asyncio.wait_for(
+        _capture_impl(cmd, cwd=cwd, env=env, timeout=timeout, input=input),
+        timeout,
+    )
