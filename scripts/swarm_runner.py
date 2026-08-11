@@ -13,8 +13,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import shlex
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict
@@ -23,6 +21,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from src import SwarmDB
+from src.swarm.command_executor import make_command_executor
 from src.swarm.runner import SwarmRunner, adapt_executor_factory
 
 
@@ -53,48 +52,6 @@ def _parse_counts(value: str) -> Dict[str, int]:
             raise SystemExit("--role-counts must look like scanner=3,analyst=2")
         counts[role.strip()] = int(count)
     return counts
-
-
-def _parse_executor_output(stdout: str) -> Any:
-    text = stdout.strip()
-    if not text:
-        return {"capture": False, "content": ""}
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return text
-
-
-def make_command_executor(command: str):
-    argv = shlex.split(command)
-    if not argv:
-        raise ValueError("--executor-command cannot be empty")
-
-    def executor(task: Dict[str, Any], context: str) -> Any:
-        payload = json.dumps(
-            {
-                "task": task,
-                "context": context,
-                "model_profile": task.get("model_profile"),
-            },
-            ensure_ascii=False,
-        )
-        proc = subprocess.run(
-            argv,
-            input=payload,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if proc.returncode != 0:
-            return {
-                "success": False,
-                "error": proc.stderr.strip() or f"executor exited {proc.returncode}",
-                "capture": False,
-            }
-        return _parse_executor_output(proc.stdout)
-
-    return executor
 
 
 async def main_async() -> int:

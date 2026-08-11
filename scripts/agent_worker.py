@@ -22,8 +22,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import shlex
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict
@@ -33,6 +31,7 @@ sys.path.insert(0, str(REPO))
 
 from src import SwarmDB
 from src.agents.capture import CaptureContext, CaptureSource, capture
+from src.swarm.command_executor import make_command_executor
 from src.swarm.model_config import record_swarm_event, resolve_task_model_profile
 from src.swarm.artifacts import verify_artifacts
 from src.swarm.work_queue import complete_work_task, fail_work_task
@@ -49,48 +48,6 @@ def _ensure_schema(db: SwarmDB) -> None:
         db.init()
     if not db.fetch_one("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_artifacts'"):
         db.init()
-
-
-def _parse_executor_output(stdout: str) -> Any:
-    text = stdout.strip()
-    if not text:
-        return {"capture": False, "content": ""}
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return text
-
-
-def make_command_executor(command: str):
-    argv = shlex.split(command)
-    if not argv:
-        raise ValueError("--executor-command cannot be empty")
-
-    def executor(task: Dict[str, Any], context: str) -> Any:
-        payload = json.dumps(
-            {
-                "task": task,
-                "context": context,
-                "model_profile": task.get("model_profile"),
-            },
-            ensure_ascii=False,
-        )
-        proc = subprocess.run(
-            argv,
-            input=payload,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if proc.returncode != 0:
-            return {
-                "success": False,
-                "error": proc.stderr.strip() or f"executor exited {proc.returncode}",
-                "capture": False,
-            }
-        return _parse_executor_output(proc.stdout)
-
-    return executor
 
 
 def complete_manual_task(db: SwarmDB, args) -> Dict[str, Any]:
