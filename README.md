@@ -94,12 +94,14 @@ swarm-knowledge/
 │   ├── agents/           # 知识捕获与检索
 │   ├── governance/       # 治理引擎 (DIKW/聚类/验证/bounty)
 │   └── ontology/         # 本体引擎
-├── scripts/              # CLI 入口 (swarmctl/capture/init_db/...)
+├── scripts/              # CLI 入口 (swarmctl/mcp_tool/capture/init_db/...)
+├── skills/               # 蜂群自有技能 (SKILL.md 格式, 内容级注入)
+├── mcp_servers.json      # MCP server 注册表 (蜂群自持 stdio 客户端)
 ├── benchmarks/           # 公开基准测试 (MARBLE/BountyBench)
 ├── docs/                 # 架构与设计文档
 ├── reports/              # 评估报告 (基准结果)
 ├── migrations/           # SQL 迁移 (001-015)
-├── tests/                # 85 项测试
+├── tests/                # 测试
 └── swarm_knowledge.db    # SQLite 数据库 (运行时生成)
 ```
 
@@ -107,6 +109,7 @@ swarm-knowledge/
 
 | 文档 | 内容 |
 |---|---|
+| [docs/skills-and-mcp.md](docs/skills-and-mcp.md) | 蜂群技能注册表与自持 MCP 客户端 (Hermes 无关) |
 | [docs/SWARM-ALGORITHM.md](docs/SWARM-ALGORITHM.md) | **蜂群算法整体梳理**（本仓库核心） |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 知识库架构（DIKW/本体/治理） |
 | [docs/DESIGN.md](docs/DESIGN.md) | 设计文档与快速开始 |

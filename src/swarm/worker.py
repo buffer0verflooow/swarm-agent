@@ -505,23 +505,42 @@ def build_task_context(db, task: Dict[str, Any], max_entries: int = 5) -> str:
                 parts.append("\n## Recent Raw Handoff Events")
                 parts.extend(event_parts)
 
-    # 第 1 层 (2026-08-11, migration 008): 角色技能包注入。
-    # task 的 model_profile.load_skills (claim_once 已解析), 追加为角色技能提示。
+    # 第 1 层 (2026-08-11, migration 008; 2026-08-12 升级为内容级注入):
+    # 角色技能包。load_skills 条目解析为 skills/*.md 的真实技能内容注入
+    # (migration 009 将默认条目指向技能文件名), 解析不到的旧条目按原样
+    # 透传为指令, 向后兼容。
     # ablation 开关: SWARM_SKILL_PACKS=0 时禁用 (基线组), 默认启用。
     import os as _os
 
     if _os.environ.get("SWARM_SKILL_PACKS", "1") != "0":
         try:
+            from .skills import inject_skills_context
+
             profile = task.get("model_profile") or {}
             skills = profile.get("load_skills") or []
             if isinstance(skills, str):
                 skills = _loads_json(skills, [])
             if isinstance(skills, list) and skills:
-                parts.append(
-                    "## Role Skills\n" + "\n".join(f"- {s}" for s in skills)
-                )
+                inject_skills_context(parts, skills)
         except Exception:  # noqa: BLE001 — 技能注入失败绝不阻断任务
             pass
+
+    # 第 2 层 (2026-08-12, migration 009): 角色 MCP 工具段。
+    # 蜂群自持 MCP 客户端 (src/swarm/mcp_client.py + scripts/mcp_tool.py),
+    # 不依赖 Hermes 的 config.yaml mcp_servers; 注入仅读静态配置, 不拉起进程。
+    try:
+        from .mcp_client import registry_tool_prompt
+
+        profile = task.get("model_profile") or {}
+        servers = profile.get("mcp_servers") or []
+        if isinstance(servers, str):
+            servers = _loads_json(servers, [])
+        if isinstance(servers, list) and servers:
+            mcp_block = registry_tool_prompt(servers)
+            if mcp_block:
+                parts.append(mcp_block)
+    except Exception:  # noqa: BLE001 — MCP 注入失败绝不阻断任务
+        pass
 
     return "\n\n".join(parts)
 

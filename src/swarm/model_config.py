@@ -92,6 +92,8 @@ def _row_to_profile(row) -> Optional[Dict[str, Any]]:
         # 第 1 层 (migration 008): 角色技能包。旧库缺列时防御性回退。
         "load_skills": _loads(row["load_skills"], []) if row.keys() and "load_skills" in row.keys() and row["load_skills"] else [],
         "tool_allowlist": _loads(row["tool_allowlist"], []) if row.keys() and "tool_allowlist" in row.keys() and row["tool_allowlist"] else [],
+        # 第 2 层 (migration 009): 角色可用的 MCP 服务器 (mcp_servers.json 键)。
+        "mcp_servers": _loads(row["mcp_servers"], []) if row.keys() and "mcp_servers" in row.keys() and row["mcp_servers"] else [],
     }
 
 
@@ -168,6 +170,9 @@ def upsert_model_profile(
     tool_policy: Optional[Dict[str, Any]] = None,
     system_prompt: str = "",
     metadata: Optional[Dict[str, Any]] = None,
+    load_skills: Optional[List[str]] = None,
+    tool_allowlist: Optional[List[str]] = None,
+    mcp_servers: Optional[List[str]] = None,
     commit: bool = True,
 ) -> str:
     """Create or update a model profile owned by the swarm."""
@@ -179,8 +184,9 @@ def upsert_model_profile(
     db.execute(
         """INSERT INTO model_profiles
            (profile_id, role, provider, model, priority, is_default, enabled,
-            max_tokens, temperature, tool_policy, system_prompt, metadata, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            max_tokens, temperature, tool_policy, system_prompt, metadata,
+            load_skills, tool_allowlist, mcp_servers, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
            ON CONFLICT(profile_id) DO UPDATE SET
                role = excluded.role,
                provider = excluded.provider,
@@ -193,6 +199,9 @@ def upsert_model_profile(
                tool_policy = excluded.tool_policy,
                system_prompt = excluded.system_prompt,
                metadata = excluded.metadata,
+               load_skills = excluded.load_skills,
+               tool_allowlist = excluded.tool_allowlist,
+               mcp_servers = excluded.mcp_servers,
                updated_at = datetime('now')""",
         (
             pid,
@@ -207,6 +216,9 @@ def upsert_model_profile(
             _json_text(tool_policy),
             system_prompt,
             _json_text(metadata),
+            _json_text(load_skills or []),
+            _json_text(tool_allowlist or []),
+            _json_text(mcp_servers or []),
         ),
     )
     if commit:

@@ -13,7 +13,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
@@ -33,6 +33,7 @@ from src.swarm.model_config import (
     upsert_model_profile,
 )
 from src.swarm.run_manager import create_seeded_swarm_run
+from src.swarm.skills import discover_skills, import_skill, load_skill
 
 ROLES = ["scanner", "analyst", "exploiter", "reporter", "orchestrator", "custom"]
 INTENTS = ["recon", "exploit", "analyze", "defend", "report", "custom"]
@@ -60,6 +61,19 @@ def _json_arg(value: str, name: str) -> Dict[str, Any]:
         raise SystemExit(f"{name} must be valid JSON: {exc}") from exc
     if not isinstance(parsed, dict):
         raise SystemExit(f"{name} must be a JSON object")
+    return parsed
+
+
+def _json_list_arg(value: str, name: str) -> Optional[List[str]]:
+    """Parse a JSON array of strings; None when empty (no override)."""
+    if not value:
+        return None
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"{name} must be valid JSON: {exc}") from exc
+    if not isinstance(parsed, list) or not all(isinstance(x, str) for x in parsed):
+        raise SystemExit(f"{name} must be a JSON array of strings")
     return parsed
 
 
@@ -103,6 +117,9 @@ def cmd_models_set(db: SwarmDB, args) -> int:
         tool_policy=_json_arg(args.tool_policy, "--tool-policy"),
         system_prompt=args.system_prompt,
         metadata=_json_arg(args.metadata, "--metadata"),
+        load_skills=_json_list_arg(args.load_skills, "--load-skills"),
+        tool_allowlist=_json_list_arg(args.tool_allowlist, "--tool-allowlist"),
+        mcp_servers=_json_list_arg(args.mcp_servers, "--mcp-servers"),
     )
     profile = get_model_profile(db, args.role, profile_id=profile_id)
     if args.json:
@@ -111,6 +128,52 @@ def cmd_models_set(db: SwarmDB, args) -> int:
         print(f"PROFILE:{profile_id}")
         if profile:
             print(f"{profile['role']} -> {profile['provider']}/{profile['model']}")
+    return 0
+
+
+def cmd_skill_list(db: SwarmDB, args) -> int:
+    skills = discover_skills()
+    if args.json:
+        _print_json({"skills": skills})
+        return 0
+    if not skills:
+        print("No skills in the swarm skills directory")
+        return 0
+    print(f"skills/ ({len(skills)}):")
+    for skill in skills:
+        tags = f" tags={skill['tags']}" if skill["tags"] else ""
+        print(f"  {skill['name']} — {skill['description'] or '(no description)'}{tags}")
+    return 0
+
+
+def cmd_skill_show(db: SwarmDB, args) -> int:
+    skill = load_skill(args.name)
+    if skill is None:
+        print(f"skill not found: {args.name}", file=sys.stderr)
+        return 1
+    if args.json:
+        _print_json(skill)
+        return 0
+    print(f"# Skill: {skill['name']}  ({skill['path']})")
+    if skill["description"]:
+        print(f"概述: {skill['description']}")
+    if skill["tags"]:
+        print(f"tags: {skill['tags']}")
+    print()
+    print(skill["body"])
+    return 0
+
+
+def cmd_skill_import(db: SwarmDB, args) -> int:
+    try:
+        result = import_skill(args.path, name=args.name)
+    except (FileNotFoundError, FileExistsError, ValueError) as exc:
+        print(f"import failed: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        _print_json(result)
+    else:
+        print(f"IMPORTED:{result['name']} -> {result['path']}")
     return 0
 
 
@@ -325,10 +388,31 @@ def build_parser() -> argparse.ArgumentParser:
     models_set.add_argument("--max-tokens", type=int)
     models_set.add_argument("--temperature", type=float)
     models_set.add_argument("--tool-policy", default="{}", help="JSON object")
+    models_set.add_argument("--load-skills", default="", help="JSON array of skill names (skills/*.md)")
+    models_set.add_argument("--tool-allowlist", default="", help="JSON array of allowed shell tools")
+    models_set.add_argument("--mcp-servers", default="", help="JSON array of MCP server names (mcp_servers.json)")
     models_set.add_argument("--system-prompt", default="")
     models_set.add_argument("--metadata", default="{}", help="JSON object")
     models_set.add_argument("--json", action="store_true")
     models_set.set_defaults(func=cmd_models_set)
+
+    skill = sub.add_parser("skill", help="Manage swarm-owned skills (skills/*.md)")
+    skill_sub = skill.add_subparsers(dest="skill_command", required=True)
+
+    skill_list = skill_sub.add_parser("list", help="List skills in the swarm skills directory")
+    skill_list.add_argument("--json", action="store_true")
+    skill_list.set_defaults(func=cmd_skill_list)
+
+    skill_show = skill_sub.add_parser("show", help="Show a skill's full content")
+    skill_show.add_argument("name", help="Skill name (skills/<name>.md)")
+    skill_show.add_argument("--json", action="store_true")
+    skill_show.set_defaults(func=cmd_skill_show)
+
+    skill_import = skill_sub.add_parser("import", help="Import an external skill markdown into skills/")
+    skill_import.add_argument("path", help="Source markdown file (e.g. ~/.hermes/skills/<name>/SKILL.md)")
+    skill_import.add_argument("--name", default="", help="Target skill name (default: from frontmatter/filename)")
+    skill_import.add_argument("--json", action="store_true")
+    skill_import.set_defaults(func=cmd_skill_import)
 
     event = sub.add_parser("event", help="Record an external client conversation event")
     event.add_argument("--run-id", required=True)

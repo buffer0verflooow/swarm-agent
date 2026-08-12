@@ -1,0 +1,16 @@
+{
+  "_comment": "蜂群自持 MCP 服务器注册表 (src/swarm/mcp_client.py 读取)。每项: command/args/env 固定于配置期, worker 只能调用工具不能改命令; allow 白名单限制可调工具。example 是本地演示服务器 (scripts/example_mcp_server.py), 角色未配置 mcp_servers 前不影响 worker。",
+  "servers": {
+    "example": {
+      "command": "python3",
+      "args": ["scripts/example_mcp_server.py"],
+      "cwd": "/home/pwn/workspace/research/swarm-knowledge",
+      "timeout": 15,
+      "allow": ["add", "echo"],
+      "tools": {
+        "add": {"description": "整数加法, 返回 a+b"},
+        "echo": {"description": "原样回显输入文本"}
+      }
+    }
+  }
+}
