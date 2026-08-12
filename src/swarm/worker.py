@@ -520,10 +520,39 @@ def build_task_context(db, task: Dict[str, Any], max_entries: int = 5) -> str:
             skills = profile.get("load_skills") or []
             if isinstance(skills, str):
                 skills = _loads_json(skills, [])
+            # 任务级技能 (migration 010 索引表推导, 写入 focus task_skills):
+            # 合并并去重, 任务级优先 (索引表是该任务该做的, 角色级是兜底)。
+            task_skills = focus.get("task_skills") or []
+            if isinstance(task_skills, str):
+                task_skills = _loads_json(task_skills, [])
+            if isinstance(task_skills, list) and task_skills:
+                merged: List[str] = []
+                seen = set()
+                for s in list(task_skills) + list(skills):
+                    key = str(s).strip()
+                    if key and key not in seen:
+                        seen.add(key)
+                        merged.append(key)
+                skills = merged
             if isinstance(skills, list) and skills:
                 inject_skills_context(parts, skills)
         except Exception:  # noqa: BLE001 — 技能注入失败绝不阻断任务
             pass
+
+    # 任务工具白名单 (migration 010 索引表推导, focus task_tools):
+    # 注入上下文让 agent 知道该任务可用哪些工具 (执行强制留后续)。
+    try:
+        task_tools = focus.get("task_tools") or []
+        if isinstance(task_tools, str):
+            task_tools = _loads_json(task_tools, [])
+        if isinstance(task_tools, list) and task_tools:
+            parts.append(
+                "## Task Tool Allowlist\n"
+                + "\n".join(f"- {t}" for t in task_tools)
+                + "\n(索引表指定该任务可用工具; 优先使用, 超出需说明理由)"
+            )
+    except Exception:  # noqa: BLE001 — 工具注入失败绝不阻断任务
+        pass
 
     # 第 2 层 (2026-08-12, migration 009): 角色 MCP 工具段。
     # 蜂群自持 MCP 客户端 (src/swarm/mcp_client.py + scripts/mcp_tool.py),

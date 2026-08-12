@@ -14,6 +14,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from .model_config import get_model_profile
+from .task_skills import index_to_focus, resolve_task_skills
 
 
 ROLE_BY_TASK_TYPE = {
@@ -71,6 +72,11 @@ def publish_work_task(
         raise ValueError("run_id is required")
 
     role = required_role or ROLE_BY_TASK_TYPE.get(task_type, "custom")
+    # 任务→角色→技能 索引表 (migration 010): 静态查表, 可编辑。
+    # 命中 → 角色/技能/工具随任务固化; 未命中 → 回退旧映射 (行为不变)。
+    index = resolve_task_skills(db, task_type)
+    if index and index.get("role"):
+        role = required_role or index["role"]
     profile = get_model_profile(db, role, profile_id=model_profile_id)
     selected_profile_id = profile["profile_id"] if profile else None
     if generation is None and parent_task_id:
@@ -93,6 +99,7 @@ def publish_work_task(
         "signal_key": key,
         "model_profile_id": selected_profile_id,
         "generation": task_generation,
+        **index_to_focus(index),
         **(metadata or {}),
     }
 
