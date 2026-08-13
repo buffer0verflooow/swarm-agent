@@ -26,7 +26,7 @@ from src.swarm.skills import (
 )
 from src.swarm.worker import build_task_context
 
-SEED = ["scanner", "analyst", "exploiter", "reporter", "custom"]
+SEED = ["scanner", "analyst", "exploiter", "reporter", "researcher", "custom"]
 
 
 def test_parse_frontmatter_basic():

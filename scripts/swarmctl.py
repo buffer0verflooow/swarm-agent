@@ -36,7 +36,7 @@ from src.swarm.run_manager import create_seeded_swarm_run
 from src.swarm.skills import discover_skills, import_skill, load_skill
 
 ROLES = ["scanner", "analyst", "exploiter", "reporter", "orchestrator", "custom"]
-INTENTS = ["recon", "exploit", "analyze", "defend", "report", "custom"]
+INTENTS = ["recon", "exploit", "analyze", "defend", "report", "research", "custom"]
 TARGET_TYPES = ["ip", "binary", "apk", "webapp", "domain", "network", "unknown"]
 
 

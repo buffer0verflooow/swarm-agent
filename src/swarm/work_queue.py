@@ -22,6 +22,7 @@ ROLE_BY_TASK_TYPE = {
     "analyze": "analyst",
     "exploit": "exploiter",
     "report": "reporter",
+    "research": "researcher",
 }
 
 

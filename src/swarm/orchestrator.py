@@ -697,6 +697,7 @@ class SwarmOrchestrator:
             "analyze": "analyst",
             "exploit": "exploiter",
             "report": "reporter",
+            "research": "researcher",
         }.get(task_type, "custom")
 
     def _task_context_ids(self, task: dict) -> List[str]:

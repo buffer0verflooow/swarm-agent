@@ -15,13 +15,17 @@ from .model_config import resolve_task_model_profile
 from .work_queue import publish_work_task
 
 
-VALID_INTENTS = {"recon", "exploit", "analyze", "defend", "report", "custom"}
+VALID_INTENTS = {"recon", "exploit", "analyze", "defend", "report", "research", "custom"}
 VALID_TARGET_TYPES = {"ip", "binary", "apk", "webapp", "domain", "network", "unknown"}
 DEFAULT_MAX_AGENTS = 8
 
 
 def default_role_counts(intent: str, profile: str = "balanced") -> Dict[str, int]:
     """Return conservative minimum worker counts for a run profile."""
+    # research 产品线 (2026-08-12, migration 016): 独立 researcher 角色,
+    # 研究/调研类任务以并行分析为主, 配 reporter 汇总。
+    if intent == "research":
+        return {"researcher": 2, "reporter": 1}
     if intent in {"recon", "custom"}:
         if profile == "breadth":
             return {"scanner": 4, "analyst": 2, "exploiter": 1, "reporter": 1}
@@ -208,6 +212,14 @@ def build_seed_tasks(
     elif intent == "defend":
         add("control-review", "analyze", "analyst", f"Review defensive controls and gaps for {target}", 80, "defend")
         add("mitigation-report", "report", "reporter", f"Maintain mitigation plan and evidence for {target}", 70, "report")
+    elif intent == "research":
+        # research 产品线 (2026-08-12, migration 016): 独立 task_type 'research',
+        # 由 task_skill_index 推导 researcher 角色 + researcher 技能; 目标文本
+        # 不再嵌入 reason (client_objective 会单独追加, 避免重复整段任务描述)。
+        add("research-scope", "research", "researcher", "明确研究问题、范围、关键维度与信息源清单", 85, "research")
+        add("evidence-collection", "research", "researcher", "多渠道收集事实并交叉验证, 每条附来源与置信度", 80, "research")
+        add("synthesis", "research", "researcher", "综合证据, 提炼结论、分歧点与不确定性", 70, "research")
+        add("research-report", "report", "reporter", "输出结构化研究报告: 摘要/分维度分析/对比/建议/参考来源", 60, "report")
     elif intent == "report":
         add("final-report", "report", "reporter", f"Build report from existing knowledge for {target}", 90, "report")
 

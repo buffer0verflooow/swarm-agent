@@ -459,6 +459,47 @@ def test_seeded_swarm_run_publishes_market_tasks():
     print("  ✅ run manager seeds independent market tasks")
 
 
+def test_seeded_research_run_uses_researcher_product_line():
+    """research 产品线 (migration 016): 独立 researcher 角色 + research 技能,
+    不注入二进制分析技能/工具; 角色计数 researcher×2 + reporter。"""
+    print("\n=== Test: Seeded Research Run ===")
+    db = setup_test_db()
+    result = create_seeded_swarm_run(
+        db,
+        swarm_name="company-research",
+        intent="research",
+        target_type="unknown",
+        target_id="",
+        profile="balanced",
+        objective="调研竞品 X 的技术方案并输出对比报告",
+    )
+    run_id = result["run_id"]
+    assert result["min_agents_by_role"] == {"researcher": 2, "reporter": 1}
+
+    tasks = db.fetch_all(
+        """SELECT task_id, task_type, required_role, status, focus_params
+           FROM agent_tasks WHERE run_id = ? ORDER BY priority DESC""",
+        (run_id,),
+    )
+    roles = {t["required_role"] for t in tasks}
+    assert roles == {"researcher", "reporter"}
+    assert all(t["status"] == "pending" for t in tasks)
+    for t in tasks:
+        focus = json.loads(t["focus_params"])
+        assert "task_skills" in focus
+        if t["required_role"] == "researcher":
+            assert t["task_type"] == "research"
+            assert focus["task_skills"] == ["researcher"]
+            assert "readelf" not in focus["task_tools"]
+            assert "analyst" not in focus["task_skills"]
+        else:
+            assert t["task_type"] == "report"
+            assert focus["task_skills"] == ["reporter"]
+
+    db.close()
+    print("  ✅ research run seeds researcher/reporter market tasks")
+
+
 async def test_swarm_runner_executes_multi_worker_pool():
     """测试自动 runner 按 min_agents_by_role 启动 worker 池并消费任务市场"""
     print("\n=== Test: Swarm Runner ===")

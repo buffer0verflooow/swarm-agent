@@ -39,6 +39,17 @@ def test_resolve_hit(db):
     assert "readelf" in r["tool_allowlist"]
 
 
+def test_resolve_research_hit(db):
+    """research 产品线 (migration 016): 独立 researcher 角色 + research 技能,
+    不含二进制分析工具。"""
+    r = resolve_task_skills(db, "research")
+    assert r is not None
+    assert r["role"] == "researcher"
+    assert r["load_skills"] == ["researcher"]
+    assert "readelf" not in r["tool_allowlist"]
+    assert "objdump" not in r["tool_allowlist"]
+
+
 def test_resolve_miss_returns_none(db):
     """未命中: 返回 None (调用方回退旧映射, 技能/工具为空)。"""
     assert resolve_task_skills(db, "no-such-task-type") is None
@@ -75,6 +86,26 @@ def test_publish_work_task_explicit_role_wins(db, run_id):
     )
     row = db.fetch_one("SELECT required_role FROM agent_tasks WHERE task_id = ?", (task_id,))
     assert row["required_role"] == "exploiter"
+
+
+def test_publish_research_task_carries_researcher_skills(db, run_id):
+    """research 任务: role=researcher, focus 固化 research 技能与工具。"""
+    task_id = publish_work_task(
+        db,
+        run_id=run_id,
+        task_type="research",
+        required_role=None,
+        reason="调研竞品技术方案",
+        intent="research",
+    )
+    row = db.fetch_one(
+        "SELECT required_role, focus_params FROM agent_tasks WHERE task_id = ?",
+        (task_id,),
+    )
+    assert row["required_role"] == "researcher"
+    focus = json.loads(row["focus_params"])
+    assert focus["task_skills"] == ["researcher"]
+    assert "curl" in focus["task_tools"]
 
 
 def test_build_task_context_merges_task_skills(db, run_id):

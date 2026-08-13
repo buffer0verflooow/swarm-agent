@@ -4,6 +4,17 @@
 `--skills` 加载或 `config.yaml mcp_servers`。任何 executor（Hermes CLI、
 Codex、Claude、opencode，只要带 shell）都能消费这两项能力。
 
+## 当前状态 (2026-08-12)
+
+- **技能：已启用。** `model_profiles.load_skills` 已指向 `skills/*.md`
+  内容文件（scanner/analyst/exploiter/reporter/researcher/custom），worker
+  领取任务时注入 `## Role Skills`。
+- **MCP：未启用（短期不接线）。** 所有角色 `mcp_servers=[]`，worker 不会
+  注入 `## MCP Tools` 段，`scripts/mcp_tool.py` 目前无调用方。example server
+  与 CLI、测试保留为后续接入基线；在运营方显式执行
+  `swarmctl models set --role <r> --mcp-servers '[...]'` 之前，不要假设 MCP
+  已生效。
+
 ## 背景: 为什么要自己做
 
 - **技能 (migration 008 → 009)**：008 只把 `load_skills` 的"方法论句子"
@@ -27,8 +38,13 @@ swarm-knowledge/
 │   ├── analyst.md
 │   ├── exploiter.md
 │   ├── reporter.md
+│   ├── researcher.md        # research 产品线 (migration 016)
 │   └── custom.md
 ```
+
+`researcher` 是 research 产品线（竞品/调研/技术选型，migration 016）的独立
+角色与技能：任务类型 `research` → 角色 `researcher` → 技能 `researcher.md`，
+与二进制/漏洞分析（analyst）完全分离。
 
 每个技能是带 frontmatter 的 markdown：
 
