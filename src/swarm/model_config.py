@@ -76,6 +76,7 @@ def model_scope(
 def _row_to_profile(row) -> Optional[Dict[str, Any]]:
     if not row:
         return None
+    keys = row.keys() if hasattr(row, "keys") else []
     return {
         "profile_id": row["profile_id"],
         "role": row["role"],
@@ -90,10 +91,12 @@ def _row_to_profile(row) -> Optional[Dict[str, Any]]:
         "system_prompt": row["system_prompt"] or "",
         "metadata": _loads(row["metadata"], {}),
         # 第 1 层 (migration 008): 角色技能包。旧库缺列时防御性回退。
-        "load_skills": _loads(row["load_skills"], []) if row.keys() and "load_skills" in row.keys() and row["load_skills"] else [],
-        "tool_allowlist": _loads(row["tool_allowlist"], []) if row.keys() and "tool_allowlist" in row.keys() and row["tool_allowlist"] else [],
+        "load_skills": _loads(row["load_skills"], []) if keys and "load_skills" in keys and row["load_skills"] else [],
+        "tool_allowlist": _loads(row["tool_allowlist"], []) if keys and "tool_allowlist" in keys and row["tool_allowlist"] else [],
         # 第 2 层 (migration 009): 角色可用的 MCP 服务器 (mcp_servers.json 键)。
-        "mcp_servers": _loads(row["mcp_servers"], []) if row.keys() and "mcp_servers" in row.keys() and row["mcp_servers"] else [],
+        "mcp_servers": _loads(row["mcp_servers"], []) if keys and "mcp_servers" in keys and row["mcp_servers"] else [],
+        # 第 3 层 (migration 020): 免费池分层。旧库缺列回退 'paid'。
+        "tier": row["tier"] if keys and "tier" in keys else "paid",
     }
 
 
@@ -242,6 +245,195 @@ def resolve_task_model_profile(db, task: Dict[str, Any]) -> Optional[Dict[str, A
     role = task.get("required_role") or "custom"
     profile_id = task.get("model_profile_id")
     return get_model_profile(db, role, profile_id=profile_id)
+
+
+# ── 免费池分层 (migration 020, 2026-08-22) ────────────────────────────────
+# 模型对照表: 角色默认 profile 的 tier 决定走免费池还是付费通道。
+# - tier='free' → 免费池轮询 (OpenCode Zen / ZenMux free), 按日限额 + 调用数
+#   均衡选择; 全部超限/不可用 → 自动降级到该角色的付费 profile。
+# - tier='paid' → 保持现状 (executor 用自己的付费通道)。
+# 免费池候选 = model_profiles 中 tier='free' AND enabled=1 的所有行
+# (跨角色共享, 按 priority 与当日用量轮询; 种子见 migration 020)。
+
+FREE_POOL_ENV_TOKEN_LIMIT = "SWARM_FREE_DAILY_TOKENS"   # 每模型每日 token 限额 (默认 1M)
+FREE_POOL_ENV_CALL_LIMIT = "SWARM_FREE_DAILY_CALLS"     # 每模型每日调用限额 (默认 300)
+FREE_POOL_DEFAULT_TOKENS = 1_000_000
+FREE_POOL_DEFAULT_CALLS = 300
+
+
+def _today() -> str:
+    from datetime import date
+
+    return date.today().isoformat()
+
+
+def record_model_usage(
+    db,
+    model_key: str,
+    tokens: int = 0,
+    calls: int = 1,
+    commit: bool = True,
+) -> None:
+    """记录免费池模型当日用量 (model_usage_daily UPSERT)。"""
+    if not model_key:
+        return
+    db.execute(
+        """INSERT INTO model_usage_daily (model_key, usage_date, tokens, calls, updated_at)
+           VALUES (?, ?, ?, ?, datetime('now'))
+           ON CONFLICT(model_key, usage_date) DO UPDATE SET
+               tokens = tokens + excluded.tokens,
+               calls = calls + excluded.calls,
+               updated_at = datetime('now')""",
+        (model_key, _today(), max(0, int(tokens or 0)), max(0, int(calls or 1))),
+    )
+    if commit:
+        db.conn.commit()
+
+
+def _daily_usage(db, model_key: str) -> Dict[str, int]:
+    row = db.fetch_one(
+        "SELECT tokens, calls FROM model_usage_daily WHERE model_key = ? AND usage_date = ?",
+        (model_key, _today()),
+    )
+    return {"tokens": int(row["tokens"] or 0) if row else 0,
+            "calls": int(row["calls"] or 0) if row else 0}
+
+
+def _free_limits(profile: Dict[str, Any]) -> Dict[str, int]:
+    import os
+
+    meta = profile.get("metadata") or {}
+    # env 全局覆盖优先于 profile 级 metadata (可临时调整个池子限额)
+    token_limit = int(os.environ.get(
+        FREE_POOL_ENV_TOKEN_LIMIT) or meta.get("daily_limit_tokens") or FREE_POOL_DEFAULT_TOKENS)
+    call_limit = int(os.environ.get(
+        FREE_POOL_ENV_CALL_LIMIT) or meta.get("daily_limit_calls") or FREE_POOL_DEFAULT_CALLS)
+    return {"tokens": token_limit, "calls": call_limit}
+
+
+def _pick_free_model(db, role: str) -> Optional[Dict[str, Any]]:
+    """从免费池选出本次执行使用的模型。
+
+    候选: 所有 tier='free' AND enabled=1 的 profile。
+    过滤: 当日用量未超限 (tokens < 限额 且 calls < 调用限额)。
+    排序: priority DESC → 当日 calls ASC (均衡轮询) → provider/model。
+    返回 profile + 路由信息; 无可选时返回 None (调用方降级付费)。
+    """
+    rows = db.fetch_all(
+        """SELECT * FROM model_profiles
+           WHERE tier = 'free' AND enabled = 1
+           ORDER BY priority DESC, provider, model"""
+    )
+    if not rows:
+        return None
+    candidates = []
+    for row in rows:
+        if row is None:
+            continue
+        profile = _row_to_profile(row)
+        if profile is None:
+            continue
+        usage = _daily_usage(db, profile["model"])
+        limits = _free_limits(profile)
+        if usage["tokens"] >= limits["tokens"] or usage["calls"] >= limits["calls"]:
+            continue
+        candidates.append((profile, usage["calls"]))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda pair: (-pair[0]["priority"], pair[1], pair[0]["model"]))
+    return candidates[0][0]
+
+
+def resolve_execution_model(db, task: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """解析任务的执行模型 (模型对照表入口)。
+
+    语义 (免费优先, 白名单角色):
+      1. 取角色默认 profile (现有语义, 多数角色为 paid)。
+      2. 仅当该角色配置了 tier='free' 的启用 profile (白名单, 种子见
+         migration 020) 时, 才尝试免费池: 命中 → engine='opencode' +
+         具体免费模型; 全超限 → 降级该角色默认付费 profile。
+      3. 非白名单角色 (analyst/exploiter 等) 永远走付费通道,
+         engine='hermes' (executor 用自己的付费模型, 现状)。
+
+    返回 profile 字典, 附加路由字段:
+      - tier:          'free' | 'paid'
+      - engine:        'opencode' (免费池, executor 用 opencode run 执行)
+                       | 'hermes' (付费, executor 用 hermes chat 执行, 现状)
+      - resolved_model: 免费池具体模型 id (engine='opencode' 时有效),
+                       如 'zenmux/z-ai/glm-5.3-free' / 'opencode/nemotron-3-ultra-free'
+      - pool_used:     本次是否命中免费池
+    """
+    role = task.get("required_role") or "custom"
+    default_profile = get_model_profile(db, role, profile_id=task.get("model_profile_id"))
+    if not default_profile:
+        return None
+
+    # 白名单检查: 该角色配置了 free profile 才进免费池
+    free_row = db.fetch_one(
+        """SELECT 1 FROM model_profiles
+           WHERE role = ? AND tier = 'free' AND enabled = 1
+           LIMIT 1""",
+        (role,),
+    )
+    if free_row:
+        free_model = _pick_free_model(db, role)
+        if free_model is not None:
+            resolved = dict(free_model)
+            resolved["tier"] = "free"
+            resolved["engine"] = "opencode"
+            # opencode --model 需要 provider/model 完整 id
+            # (model 已含 '/' 时视为已完整, 直接使用)
+            fm = free_model["model"] or ""
+            resolved["resolved_model"] = fm if "/" in fm else f"{free_model['provider']}/{fm}"
+            resolved["pool_used"] = True
+            resolved["role"] = role
+            return resolved
+        # 免费池全超限/不可用 → 降级该角色默认付费 profile
+        resolved = dict(default_profile)
+        resolved["tier"] = "paid"
+        resolved["engine"] = "hermes"
+        resolved["resolved_model"] = None
+        resolved["pool_used"] = False
+        resolved["role"] = role
+        return resolved
+
+    # 非白名单角色 → 付费通道 (现状语义)
+    resolved = dict(default_profile)
+    resolved["tier"] = "paid"
+    resolved["engine"] = "hermes"
+    resolved["resolved_model"] = None
+    resolved["pool_used"] = False
+    resolved["role"] = role
+    return resolved
+
+
+def free_pool_status(db) -> List[Dict[str, Any]]:
+    """免费池诊断快照: 每个 free 模型 + 当日用量/限额。"""
+    rows = db.fetch_all(
+        """SELECT * FROM model_profiles
+           WHERE tier = 'free' AND enabled = 1
+           ORDER BY priority DESC, provider, model"""
+    )
+    result = []
+    for row in rows:
+        if row is None:
+            continue
+        profile = _row_to_profile(row)
+        if profile is None:
+            continue
+        usage = _daily_usage(db, profile["model"])
+        limits = _free_limits(profile)
+        result.append({
+            "profile_id": profile["profile_id"],
+            "role": profile["role"],
+            "model": profile["model"],
+            "tokens_today": usage["tokens"],
+            "calls_today": usage["calls"],
+            "limit_tokens": limits["tokens"],
+            "limit_calls": limits["calls"],
+            "available": usage["tokens"] < limits["tokens"] and usage["calls"] < limits["calls"],
+        })
+    return result
 
 
 def record_swarm_event(

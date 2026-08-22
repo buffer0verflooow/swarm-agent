@@ -86,6 +86,7 @@ class SwarmDB:
         self._ensure_research_intent_schema()
         self._ensure_agent_tasks_research_schema()
         self._ensure_agent_profiles_research_role()
+        self._ensure_model_tier_schema()
         _log.info("Database initialized: %s (%d migrations)", self.db_path, len(migrations))
         return True
 
@@ -354,7 +355,24 @@ class SwarmDB:
         ddl = self.fetch_one(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='agent_profiles'"
         )
-        if ddl and "'researcher'" in (ddl["sql"] or ""):
+        required_roles = (
+            "'researcher'",
+            "'company-worker'",
+            "'report-writer'",
+            "'content-writer'",
+            "'qa-reviewer'",
+            "'strategy-analyst'",
+            "'market-researcher'",
+            "'data-analyst'",
+            "'binary-analyzer'",
+            "'analysis-reviewer'",
+            "'vuln-reasoner'",
+            "'dynamic-debugger'",
+            "'fuzzer'",
+            "'llm-security'",
+        )
+        ddl_sql = ddl["sql"] if ddl else ""
+        if ddl and all(role in (ddl_sql or "") for role in required_roles):
             return
 
         self.conn.execute("PRAGMA foreign_keys=OFF")
@@ -365,7 +383,14 @@ class SwarmDB:
                     """CREATE TABLE agent_profiles_new (
                         agent_id        TEXT PRIMARY KEY,
                         agent_name      TEXT UNIQUE NOT NULL,
-                        role            TEXT NOT NULL CHECK (role IN ('scanner','analyst','exploiter','reporter','orchestrator','researcher','custom')),
+                        role            TEXT NOT NULL CHECK (role IN (
+                            'scanner','analyst','exploiter','reporter','orchestrator',
+                            'researcher','custom',
+                            'company-worker','report-writer','content-writer','qa-reviewer',
+                            'strategy-analyst','market-researcher','data-analyst',
+                            'binary-analyzer','analysis-reviewer','vuln-reasoner',
+                            'dynamic-debugger','fuzzer','llm-security'
+                        )),
                         capabilities    TEXT DEFAULT '[]',
                         default_tools   TEXT DEFAULT '[]',
                         model_preference TEXT,
@@ -417,9 +442,36 @@ class SwarmDB:
         )
         self.conn.execute(
             """CREATE UNIQUE INDEX IF NOT EXISTS idx_sr_pending_dedup_unique
-               ON spawn_requests(run_id, dedup_key, status)
-               WHERE status = 'pending' AND dedup_key IS NOT NULL"""
+              ON spawn_requests(run_id, dedup_key, status)
+              WHERE status = 'pending' AND dedup_key IS NOT NULL"""
         )
+        self.conn.commit()
+
+    def _ensure_model_tier_schema(self) -> None:
+        """Migration 020 兜底 (2026-08-22): model_profiles.tier + model_usage_daily。
+
+        对未跑 migration 020 的已有库幂等补齐:
+        1. model_profiles 缺 tier 列 → ALTER ADD COLUMN (默认 'paid', 行为不变)
+        2. model_usage_daily 表不存在 → CREATE
+        """
+        if self._table_exists("model_profiles") and not self._column_exists(
+            "model_profiles", "tier"
+        ):
+            self.conn.execute(
+                "ALTER TABLE model_profiles ADD COLUMN tier TEXT NOT NULL DEFAULT 'paid' "
+                "CHECK (tier IN ('free', 'paid'))"
+            )
+        if not self._table_exists("model_usage_daily"):
+            self.conn.execute(
+                """CREATE TABLE model_usage_daily (
+                    model_key  TEXT NOT NULL,
+                    usage_date TEXT NOT NULL,
+                    tokens     INTEGER NOT NULL DEFAULT 0,
+                    calls      INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    PRIMARY KEY (model_key, usage_date)
+                )"""
+            )
         self.conn.commit()
 
     @contextmanager

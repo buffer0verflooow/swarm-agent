@@ -460,8 +460,9 @@ def test_seeded_swarm_run_publishes_market_tasks():
 
 
 def test_seeded_research_run_uses_researcher_product_line():
-    """research 产品线 (migration 016): 独立 researcher 角色 + research 技能,
-    不注入二进制分析技能/工具; 角色计数 researcher×2 + reporter。"""
+    """research 产品线 (migration 016 + 017): 独立 researcher 角色 + research 技能,
+    不注入二进制分析技能/工具; 角色计数 researcher×3 + reporter
+    (migration 017 role_catalog 的 parallelism_hint research=3 覆盖硬编码默认值)。"""
     print("\n=== Test: Seeded Research Run ===")
     db = setup_test_db()
     result = create_seeded_swarm_run(
@@ -474,7 +475,7 @@ def test_seeded_research_run_uses_researcher_product_line():
         objective="调研竞品 X 的技术方案并输出对比报告",
     )
     run_id = result["run_id"]
-    assert result["min_agents_by_role"] == {"researcher": 2, "reporter": 1}
+    assert result["min_agents_by_role"] == {"researcher": 3, "reporter": 1}
 
     tasks = db.fetch_all(
         """SELECT task_id, task_type, required_role, status, focus_params
@@ -995,7 +996,11 @@ def test_agent_worker_cli_manual_claim_complete():
     claimed = json.loads(claim.stdout)
     assert claimed["task"]["task_id"] == task_id
     assert claimed["model_profile"]["role"] == "reporter"
-    assert claimed["model_profile"]["provider"] == "client"
+    # migration 020 模型对照表: reporter 是免费池白名单角色,
+    # claim 时命中免费池 (opencode 引擎), 不再走 client 付费通道
+    assert claimed["model_profile"]["tier"] == "free"
+    assert claimed["model_profile"]["engine"] == "opencode"
+    assert claimed["model_profile"]["provider"] == "opencode"
 
     complete = subprocess.run(
         [

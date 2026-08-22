@@ -19,7 +19,9 @@ from typing import Any, Callable, Dict, List, Optional
 from .lifecycle import AgentLifecycle
 from .model_config import (
     assign_task_model_profile,
+    record_model_usage,
     record_swarm_event,
+    resolve_execution_model,
     resolve_task_model_profile,
 )
 from .artifacts import verify_artifacts
@@ -165,8 +167,29 @@ class SwarmWorker:
     def stop(self) -> None:
         self._stopped = True
 
+    def is_killed(self) -> bool:
+        """True if the controller has killed this agent (agent_profiles → deprecated).
+
+        The controller writes its kill decision only to the DB; the worker
+        process must poll this itself to actually stop claiming/executing.
+        """
+        try:
+            row = self.db.fetch_one(
+                "SELECT status FROM agent_profiles WHERE agent_id = ?", (self.agent_id,)
+            )
+        except Exception:
+            return False
+        return bool(row and row["status"] == "deprecated")
+
     def claim_once(self) -> Optional[Dict[str, Any]]:
         """Claim one task and return it with built context, without executing."""
+        # Controller-kill check MUST precede _ensure_registered: register()'s
+        # UPSERT would otherwise flip agent_profiles back to 'active',
+        # resurrecting a killed worker.
+        if self.is_killed():
+            self._stopped = True
+            _log.info("worker %s killed by controller; skipping claim", self.agent_id)
+            return None
         self._ensure_registered()
         claimed = claim_work_tasks(
             self.db,
@@ -181,7 +204,10 @@ class SwarmWorker:
 
         task = claimed[0]
         original_profile_id = task.get("model_profile_id")
-        model_profile = resolve_task_model_profile(self.db, task)
+        # 模型对照表入口 (migration 020): 免费池轮询 → 超限降级付费。
+        # 返回附加 tier/engine/resolved_model 路由字段; 无 free 池时
+        # 语义与旧 resolve_task_model_profile 一致。
+        model_profile = resolve_execution_model(self.db, task) or resolve_task_model_profile(self.db, task)
         if model_profile:
             task["model_profile_id"] = model_profile["profile_id"]
             task["model_profile"] = model_profile
@@ -229,9 +255,36 @@ class SwarmWorker:
                 raw = await raw
             normalized = normalize_executor_result(raw)
 
+            # 免费池用量记账 (migration 020): 免费模型被调用即计,
+            # 失败也消耗免费额度 (token 尽力上报, 无则只计 calls)。
+            profile_meta = task.get("model_profile") or {}
+            if profile_meta.get("tier") == "free":
+                record_model_usage(
+                    self.db,
+                    model_key=profile_meta.get("resolved_model")
+                    or profile_meta.get("model")
+                    or f"{profile_meta.get('provider')}/{profile_meta.get('model')}",
+                    tokens=normalized["token_cost"],
+                    calls=1,
+                )
+
+            # Killed while executing: controller already released this task back
+            # to pending (agent_id=NULL); another worker may have re-claimed it.
+            # Do not complete/fail anything — guarded UPDATEs below would match
+            # the re-claimer's row without this early exit and poison its result.
+            if self.is_killed():
+                self._stopped = True
+                _log.info(
+                    "worker %s killed while running task %s; abandoning result",
+                    self.agent_id, task_id,
+                )
+                self.lifecycle.beat(current_task_id=None, load=0.0)
+                return WorkerResult(task_id=task_id, status="abandoned",
+                                    error="killed by controller mid-task")
+
             if not normalized["success"]:
                 error = normalized["error"] or "executor reported failure"
-                fail_work_task(self.db, task_id, error)
+                fail_work_task(self.db, task_id, error, agent_id=self.agent_id)
                 self.lifecycle.beat(current_task_id=None, load=0.0)
                 return WorkerResult(task_id=task_id, status="failed", error=error)
 
@@ -254,7 +307,7 @@ class SwarmWorker:
                     normalized["error"]
                     or f"worker declared BLOCKED: {normalized['content'][:200]}"
                 )
-                fail_work_task(self.db, task_id, error)
+                fail_work_task(self.db, task_id, error, agent_id=self.agent_id)
                 record_swarm_event(
                     self.db,
                     run_id=self.run_id,
@@ -281,7 +334,7 @@ class SwarmWorker:
                 )
                 if not artifact_verification["ok"]:
                     error = "artifact verification failed"
-                    fail_work_task(self.db, task_id, error)
+                    fail_work_task(self.db, task_id, error, agent_id=self.agent_id)
                     record_swarm_event(
                         self.db,
                         run_id=self.run_id,
@@ -314,6 +367,7 @@ class SwarmWorker:
                 task_id,
                 result_summary=summary,
                 token_cost=normalized["token_cost"],
+                agent_id=self.agent_id,
             )
             event_type = {
                 "EXHAUSTED": "worker_exhausted",
@@ -343,7 +397,7 @@ class SwarmWorker:
                 final_label=final_label,
             )
         except Exception as exc:
-            fail_work_task(self.db, task_id, str(exc))
+            fail_work_task(self.db, task_id, str(exc), agent_id=self.agent_id)
             self.lifecycle.beat(current_task_id=None, load=0.0)
             _log.exception("worker task failed: task_id=%s", task_id)
             return WorkerResult(task_id=task_id, status="failed", error=str(exc))
@@ -354,10 +408,21 @@ class SwarmWorker:
         idle_ticks = 0
         final_label = ""
         while not self._stopped:
+            # Idle workers (no claimable task) must also notice a controller
+            # kill; claim_once's check only fires when a task is being claimed.
+            if self.is_killed():
+                self._stopped = True
+                _log.info("worker %s killed by controller while idle; stopping", self.agent_id)
+                break
             result = await self.run_once()
             if result is None:
                 idle_ticks += 1
                 if max_tasks is not None and processed >= max_tasks:
+                    break
+                # A bounded worker should exit after the first idle round when
+                # no task was ever claimed; otherwise a finite agent_worker
+                # process waits forever for work that will never arrive.
+                if max_tasks is not None and processed == 0 and idle_ticks >= 1:
                     break
                 await asyncio.sleep(self.poll_interval)
                 continue
@@ -552,6 +617,19 @@ def build_task_context(db, task: Dict[str, Any], max_entries: int = 5) -> str:
                 + "\n(索引表指定该任务可用工具; 优先使用, 超出需说明理由)"
             )
     except Exception:  # noqa: BLE001 — 工具注入失败绝不阻断任务
+        pass
+
+    # Role catalog (migration 017): role brief + blackboard access are now
+    # first-class, editable role data.  Missing/old DB falls back to the
+    # existing model_profiles behaviour and the worker still runs.
+    try:
+        from .role_catalog import get_role_catalog, inject_role_context
+
+        role = task.get("required_role") or task.get("model_profile", {}).get("role") or "custom"
+        role_def = get_role_catalog(db, role)
+        if role_def:
+            inject_role_context(parts, role_def)
+    except Exception:  # noqa: BLE001 — role catalog must never block a task
         pass
 
     # 第 2 层 (2026-08-12, migration 009): 角色 MCP 工具段。
